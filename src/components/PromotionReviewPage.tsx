@@ -1,0 +1,79 @@
+"use client";
+
+import type { AdRecord, BusinessRecord } from "../domain/types";
+import type { DailyOperationRecord, PromotionPlanOverride } from "../domain/planning";
+import { buildPromotionAnalyticsRows } from "../integration/promotion-analytics";
+import { TrendChart } from "./TrendChart";
+
+export interface PromotionReviewPageProps {
+  ads: readonly AdRecord[];
+  business: readonly BusinessRecord[];
+  overrides: readonly PromotionPlanOverride[];
+  operations: readonly DailyOperationRecord[];
+  startDate: string;
+  endDate: string;
+  onBack: () => void;
+}
+
+const money = (value: number | null) => value === null ? "—" : `US$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+const percent = (value: number | null) => value === null ? "—" : `${(value * 100).toFixed(1)}%`;
+
+export function PromotionReviewPage({ ads, business, overrides, operations, startDate, endDate, onBack }: PromotionReviewPageProps) {
+  const rows = buildPromotionAnalyticsRows({ ads, business, overrides, startDate, endDate });
+  const chartRows = rows.map((row) => ({
+    date: row.date.slice(5),
+    targetUnits: row.targetDailyUnits,
+    actualUnits: row.actualUnits,
+    plannedAd: row.plannedAdBudgetNumber,
+    adSpend: row.adSpend,
+    targetAcos: row.targetAcosNumber,
+    acos: row.acos,
+    plannedSales: row.plannedSalesNumber,
+    actualSales: row.actualSales,
+  }));
+  const operationDates = new Set(operations.map((row) => row.date));
+  const anomalyRows = rows.filter((row) => row.anomalies.length > 0).slice(0, 30);
+  const totalTarget = rows.reduce((sum, row) => sum + row.targetDailyUnits, 0);
+  const totalActual = rows.reduce((sum, row) => sum + (row.actualUnits ?? 0), 0);
+  const totalPlanAd = rows.reduce((sum, row) => sum + (row.plannedAdBudgetNumber ?? 0), 0);
+  const totalAdSpend = rows.reduce((sum, row) => sum + row.adSpend, 0);
+
+  return (
+    <main className="dashboard-shell promotion-shell">
+      <header className="dashboard-header">
+        <div className="brand-lockup"><span className="brand-mark" aria-hidden="true">AD</span><div>
+          <p className="brand-kicker">PROMOTION REVIEW</p><h1>推广复盘图表</h1>
+          <p className="as-of">复盘区间 · {startDate} 至 {endDate}</p>
+        </div></div>
+        <button className="secondary-button" type="button" onClick={onBack}>返回推广作战看板</button>
+      </header>
+      <section className="promotion-kpi-grid" aria-label="推广复盘核心指标">
+        <article><span>计划销量</span><strong>{Math.round(totalTarget)}</strong></article>
+        <article><span>实际销量</span><strong>{Math.round(totalActual)}</strong></article>
+        <article><span>销量完成率</span><strong>{percent(totalTarget ? totalActual / totalTarget : null)}</strong></article>
+        <article><span>计划广告额度</span><strong>{money(totalPlanAd)}</strong></article>
+        <article><span>实际广告花费</span><strong>{money(totalAdSpend)}</strong></article>
+        <article><span>异常天数</span><strong>{rows.filter((row) => row.anomalies.length > 0).length}</strong></article>
+      </section>
+      <section className="trend-grid" aria-label="推广复盘图表">
+        <TrendChart title="计划销量 vs 实际销量" rows={chartRows} series={[{ key: "actualUnits", label: "实际销量", color: "#9f1d28", axis: "value" }, { key: "targetUnits", label: "目标销量", color: "#526277", axis: "value" }]} />
+        <TrendChart title="计划广告 vs 实际广告" rows={chartRows} series={[{ key: "adSpend", label: "实际广告", color: "#9f1d28", axis: "currency" }, { key: "plannedAd", label: "计划广告", color: "#526277", axis: "currency" }]} />
+        <TrendChart title="目标ACOS vs 实际ACOS" rows={chartRows} series={[{ key: "acos", label: "实际ACOS", color: "#9f1d28", axis: "percentage" }, { key: "targetAcos", label: "目标ACOS", color: "#526277", axis: "percentage" }]} />
+        <TrendChart title="计划销售额 vs 实际销售额" rows={chartRows} series={[{ key: "actualSales", label: "实际销售额", color: "#9f1d28", axis: "currency" }, { key: "plannedSales", label: "计划销售额", color: "#526277", axis: "currency" }]} />
+      </section>
+      <section className="panel promotion-table-panel" aria-labelledby="promotion-anomaly-heading">
+        <div className="panel-heading"><div><p className="eyebrow">EXCEPTION REVIEW</p><h2 id="promotion-anomaly-heading">异常提醒清单</h2></div><span className="panel-meta">按天发现问题</span></div>
+        <div className="table-scroll">
+          <table aria-label="推广异常提醒表">
+            <thead><tr><th scope="col">日期</th><th scope="col">阶段</th><th scope="col">目标/实际销量</th><th scope="col">广告</th><th scope="col">ACOS</th><th scope="col">异常</th><th scope="col">操作记录</th></tr></thead>
+            <tbody>{anomalyRows.map((row) => (
+              <tr key={row.date}>
+                <th scope="row">{row.date}</th><td>{row.phase}</td><td>{row.targetDailyUnits} / {row.actualUnits ?? "缺数据"}</td><td>{money(row.plannedAdBudgetNumber)} / {money(row.adSpend)}</td><td>{percent(row.targetAcosNumber)} / {percent(row.acos)}</td><td>{row.anomalies.join("、")}</td><td>{operationDates.has(row.date) ? "有操作记录" : "未记录"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  );
+}

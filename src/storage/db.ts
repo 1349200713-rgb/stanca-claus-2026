@@ -1,0 +1,352 @@
+import type { AdRecord, BusinessRecord, ManualRecord, SizeCode } from "../domain/types";
+import type { ActivePlan, DailyOperationRecord, InboundEntry, InventorySnapshot, PlanChange, PromotionPlanOverride } from "../domain/planning";
+
+export type OpsStore = "business" | "ads" | "manual" | "imports" | "mappings" | "rawImports" | "rawRows" | "derivedResults" | "activePlan" | "planChanges" | "inventory" | "inbound" | "promotionPlan" | "dailyOps";
+type FormalStore = "business" | "ads" | "inventory";
+
+export interface ImportLog {
+  key: string;
+  filename: string;
+  importedAt: string;
+  reportKind: "business" | "ads" | "inventory" | "inbound" | "promotionPlan";
+  rowCount: number;
+  issueCount: number;
+  duplicateCount: number;
+  action: "insert" | "replace";
+  rawArtifactKey?: string;
+  rawRowKeys?: string[];
+  derivedResultKeys?: string[];
+}
+
+export interface ImportEvidence {
+  bytes: ArrayBuffer;
+  rawRows: Array<Record<string, string>>;
+}
+
+export interface RawImportArtifact {
+  key: string;
+  importKey: string;
+  filename: string;
+  importedAt: string;
+  reportKind: ImportLog["reportKind"];
+  byteLength: number;
+  bytes: ArrayBuffer;
+}
+
+export interface RawImportRow {
+  key: string;
+  importKey: string;
+  rowNumber: number;
+  values: Record<string, string>;
+}
+
+export interface DerivedResultRecord {
+  key: string;
+  importKey: string;
+  reportKind: "business" | "ads" | "inventory";
+  sourceRecordKey: string;
+  record: BusinessRecord | AdRecord | InventorySnapshot;
+}
+
+export type StoredManualRecord = ManualRecord & { key: string };
+
+export interface MappingRecord {
+  key: string;
+  sku?: string;
+  asin?: string;
+  size?: SizeCode;
+}
+
+type StoredActivePlan = ActivePlan & { key: string };
+type StoredPlanChange = PlanChange & { key: string };
+type StoredInboundEntry = InboundEntry & { key: string };
+
+function stripStorageKey<T extends { key: string }>(record: T): Omit<T, "key"> {
+  const copy: Partial<T> = structuredClone(record);
+  delete copy.key;
+  return copy as Omit<T, "key">;
+}
+
+function inboundStorageKey(entry: InboundEntry): string {
+  const shipmentKey = entry.fbaNumber && entry.sku
+    ? `${entry.fbaNumber.trim()}:${entry.sku.trim()}:${entry.shipDate ?? ""}:${entry.expectedArrivalDate ?? ""}`
+    : entry.size;
+  return `inbound:${shipmentKey}`;
+}
+
+interface StoreRecordMap {
+  business: BusinessRecord;
+  ads: AdRecord;
+  manual: StoredManualRecord;
+  imports: ImportLog;
+  mappings: MappingRecord;
+  rawImports: RawImportArtifact;
+  rawRows: RawImportRow;
+  derivedResults: DerivedResultRecord;
+  activePlan: StoredActivePlan;
+  planChanges: StoredPlanChange;
+  inventory: InventorySnapshot;
+  inbound: StoredInboundEntry;
+  promotionPlan: PromotionPlanOverride;
+  dailyOps: DailyOperationRecord;
+}
+
+const databaseName = "santa-ops";
+const databaseVersion = 5;
+const storeNames: OpsStore[] = ["business", "ads", "manual", "imports", "mappings", "rawImports", "rawRows", "derivedResults", "activePlan", "planChanges", "inventory", "inbound", "promotionPlan", "dailyOps"];
+const activePlanKey = "active-plan";
+
+let database: IDBDatabase | undefined;
+let opening: Promise<IDBDatabase> | undefined;
+let idbFactory: IDBFactory | undefined = globalThis.indexedDB;
+
+function requestValue<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new DOMException("IndexedDB request failed"));
+  });
+}
+
+function transactionDone(transaction: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new DOMException("IndexedDB transaction failed"));
+    transaction.onabort = () => reject(transaction.error ?? new DOMException("IndexedDB transaction aborted"));
+  });
+}
+
+async function finishWrite(requests: Promise<unknown>[], done: Promise<void>): Promise<void> {
+  try {
+    await Promise.all(requests);
+    await done;
+  } catch (error) {
+    await done.catch(() => undefined);
+    throw error;
+  }
+}
+
+function openDatabase(): Promise<IDBDatabase> {
+  if (database) return Promise.resolve(database);
+  if (opening) return opening;
+  if (!idbFactory) return Promise.reject(new Error("IndexedDB is unavailable in this browser"));
+
+  opening = new Promise((resolve, reject) => {
+    const request = idbFactory!.open(databaseName, databaseVersion);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      for (const store of storeNames) {
+        if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: "key" });
+      }
+    };
+    request.onsuccess = () => {
+      database = request.result;
+      opening = undefined;
+      resolve(database);
+    };
+    request.onerror = () => {
+      opening = undefined;
+      reject(request.error ?? new DOMException("Unable to open IndexedDB"));
+    };
+  });
+  return opening;
+}
+
+async function write<K extends OpsStore>(store: K, records: readonly StoreRecordMap[K][], mode: "add" | "put"): Promise<void> {
+  if (!records.length) return;
+  const db = await openDatabase();
+  const transaction = db.transaction(store, "readwrite");
+  const objectStore = transaction.objectStore(store);
+  const done = transactionDone(transaction);
+  const requests = records.map((record) => requestValue(objectStore[mode](structuredClone(record))));
+  await finishWrite(requests, done);
+}
+
+export const opsDb = {
+  async list<K extends OpsStore>(store: K): Promise<StoreRecordMap[K][]> {
+    const db = await openDatabase();
+    const transaction = db.transaction(store, "readonly");
+    const records = await requestValue(transaction.objectStore(store).getAll());
+    return records as StoreRecordMap[K][];
+  },
+
+  insert<K extends OpsStore>(store: K, records: readonly StoreRecordMap[K][]): Promise<void> {
+    return write(store, records, "add");
+  },
+
+  replace<K extends OpsStore>(store: K, records: readonly StoreRecordMap[K][]): Promise<void> {
+    return write(store, records, "put");
+  },
+
+  async getActivePlan(): Promise<ActivePlan | undefined> {
+    const plans = await opsDb.list("activePlan");
+    const plan = plans.find((record) => record.key === activePlanKey);
+    if (!plan) return undefined;
+    return stripStorageKey(plan);
+  },
+
+  async saveActivePlan(plan: ActivePlan, change: PlanChange): Promise<void> {
+    const db = await openDatabase();
+    const transaction = db.transaction(["activePlan", "planChanges"], "readwrite");
+    const done = transactionDone(transaction);
+    const storedPlan: StoredActivePlan = { ...structuredClone(plan), key: activePlanKey };
+    const storedChange: StoredPlanChange = { ...structuredClone(change), key: change.id };
+    await finishWrite([
+      requestValue(transaction.objectStore("activePlan").put(storedPlan)),
+      requestValue(transaction.objectStore("planChanges").add(storedChange)),
+    ], done);
+  },
+
+  listInventorySnapshots(): Promise<InventorySnapshot[]> {
+    return opsDb.list("inventory");
+  },
+
+  replaceInventorySnapshots(rows: readonly InventorySnapshot[]): Promise<void> {
+    return write("inventory", rows, "put");
+  },
+
+  async getInboundEntries(): Promise<InboundEntry[]> {
+    const entries = await opsDb.list("inbound");
+    return entries.map(stripStorageKey);
+  },
+
+  saveInboundEntry(entry: InboundEntry): Promise<void> {
+    return write("inbound", [{ ...structuredClone(entry), key: inboundStorageKey(entry) }], "put");
+  },
+
+  async deleteInboundEntry(entry: InboundEntry): Promise<void> {
+    const db = await openDatabase();
+    const transaction = db.transaction("inbound", "readwrite");
+    const done = transactionDone(transaction);
+    await finishWrite([requestValue(transaction.objectStore("inbound").delete(inboundStorageKey(entry)))], done);
+  },
+
+  listPromotionPlanOverrides(): Promise<PromotionPlanOverride[]> {
+    return opsDb.list("promotionPlan");
+  },
+
+  replacePromotionPlanOverrides(rows: readonly PromotionPlanOverride[]): Promise<void> {
+    return write("promotionPlan", rows, "put");
+  },
+
+  listDailyOperations(): Promise<DailyOperationRecord[]> {
+    return opsDb.list("dailyOps");
+  },
+
+  saveDailyOperation(record: DailyOperationRecord): Promise<void> {
+    return write("dailyOps", [record], "put");
+  },
+
+  async deleteDailyOperation(key: string): Promise<void> {
+    const db = await openDatabase();
+    const transaction = db.transaction("dailyOps", "readwrite");
+    const done = transactionDone(transaction);
+    await finishWrite([requestValue(transaction.objectStore("dailyOps").delete(key))], done);
+  },
+
+  async archiveImportEvidence(log: ImportLog, evidence: ImportEvidence): Promise<void> {
+    const db = await openDatabase();
+    const rawArtifactKey = `raw-artifact:${log.key}`;
+    const rawRowKeys = evidence.rawRows.map((_, index) => `raw-row:${log.key}:${index + 2}`);
+    const committedLog: ImportLog = { ...structuredClone(log), rawArtifactKey, rawRowKeys, derivedResultKeys: [] };
+    const transaction = db.transaction(["imports", "rawImports", "rawRows"], "readwrite");
+    const done = transactionDone(transaction);
+    const requests = [
+      requestValue(transaction.objectStore("imports").add(structuredClone(committedLog))),
+      requestValue(transaction.objectStore("rawImports").add(structuredClone({
+        key: rawArtifactKey,
+        importKey: log.key,
+        filename: log.filename,
+        importedAt: log.importedAt,
+        reportKind: log.reportKind,
+        byteLength: evidence.bytes.byteLength,
+        bytes: evidence.bytes.slice(0),
+      } satisfies RawImportArtifact))),
+      ...evidence.rawRows.map((values, index) => requestValue(transaction.objectStore("rawRows").add(structuredClone({
+        key: rawRowKeys[index],
+        importKey: log.key,
+        rowNumber: index + 2,
+        values,
+      } satisfies RawImportRow)))),
+    ];
+    await finishWrite(requests, done);
+  },
+
+  async commitImport<K extends FormalStore>(store: K, records: readonly StoreRecordMap[K][], log: ImportLog, evidence?: ImportEvidence): Promise<void> {
+    const db = await openDatabase();
+    const rawArtifactKey = `raw-artifact:${log.key}`;
+    const rawRowKeys = evidence?.rawRows.map((_, index) => `raw-row:${log.key}:${index + 2}`) ?? [];
+    const derivedResultKeys = records.map((record, index) => `derived:${log.key}:${index}:${record.key}`);
+    const committedLog: ImportLog = evidence ? { ...log, rawArtifactKey, rawRowKeys, derivedResultKeys } : structuredClone(log);
+    const stores: OpsStore[] = evidence
+      ? [store, "imports", "rawImports", "rawRows", "derivedResults"]
+      : [store, "imports"];
+    const transaction = db.transaction(stores, "readwrite");
+    const done = transactionDone(transaction);
+    const recordStore = transaction.objectStore(store);
+    const importStore = transaction.objectStore("imports");
+    const mode = log.action === "replace" ? "put" : "add";
+    const requests = [
+      ...records.map((record) => requestValue(recordStore[mode](structuredClone(record)))),
+      requestValue(importStore.add(structuredClone(committedLog))),
+    ];
+    if (evidence) {
+      const artifact: RawImportArtifact = {
+        key: rawArtifactKey,
+        importKey: log.key,
+        filename: log.filename,
+        importedAt: log.importedAt,
+        reportKind: log.reportKind,
+        byteLength: evidence.bytes.byteLength,
+        bytes: evidence.bytes.slice(0),
+      };
+      requests.push(requestValue(transaction.objectStore("rawImports").add(structuredClone(artifact))));
+      requests.push(...evidence.rawRows.map((values, index) => requestValue(transaction.objectStore("rawRows").add(structuredClone({
+        key: rawRowKeys[index],
+        importKey: log.key,
+        rowNumber: index + 2,
+        values,
+      } satisfies RawImportRow)))));
+      requests.push(...records.map((record, index) => requestValue(transaction.objectStore("derivedResults").add(structuredClone({
+        key: derivedResultKeys[index],
+        importKey: log.key,
+        reportKind: store,
+        sourceRecordKey: record.key,
+        record,
+      } satisfies DerivedResultRecord)))));
+    }
+    await finishWrite(requests, done);
+  },
+
+  async clear(store?: OpsStore): Promise<void> {
+    if (!store) {
+      await Promise.all(storeNames.map((name) => opsDb.clear(name)));
+      return;
+    }
+    const db = await openDatabase();
+    const transaction = db.transaction(store, "readwrite");
+    const done = transactionDone(transaction);
+    await finishWrite([requestValue(transaction.objectStore(store).clear())], done);
+  },
+};
+
+/** Test-only adapter point. Production always uses the browser's native IndexedDB factory. */
+export function configureOpsDbForTests(factory: IDBFactory | undefined): void {
+  if (database || opening) throw new Error("Close the database before changing the IndexedDB factory");
+  idbFactory = factory;
+}
+
+/** Closes the cached connection so the next operation behaves like a browser reload. */
+export async function closeOpsDbForTests(): Promise<void> {
+  const pending = opening;
+  if (pending) await pending;
+  database?.close();
+  database = undefined;
+  opening = undefined;
+}
+
+/** Clears test data, closes the connection, and restores the browser IndexedDB factory. */
+export async function resetOpsDbForTests(): Promise<void> {
+  if (idbFactory) await opsDb.clear();
+  await closeOpsDbForTests();
+  idbFactory = globalThis.indexedDB;
+}

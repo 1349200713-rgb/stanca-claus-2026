@@ -1,0 +1,182 @@
+{
+  "seasonEndDate": "2026-12-20",
+  "sizeTotals": {
+    "L": 520,
+    "XL": 1600,
+    "2XL": 550,
+    "3XL": 330
+  },
+  "primaryMappings": [
+    {
+      "asin": "B0CFPWYPRN",
+      "sku": "A022-XXX-09-0C100",
+      "size": "L",
+      "plannedUnits": 520
+    },
+    {
+      "asin": "B0CFPR34MH",
+      "sku": "A022-XXX-09-0B500",
+      "size": "XL",
+      "plannedUnits": 1600
+    },
+    {
+      "asin": "B0CFQ3TMBZ",
+      "sku": "A022-XXX-09-0L100",
+      "size": "2XL",
+      "plannedUnits": 550
+    },
+    {
+      "asin": "B0CFQ2D8FD",
+      "sku": "A022-XXX-09-0I100",
+      "size": "3XL",
+      "plannedUnits": 330
+    }
+  ],
+  "costAssumptions": {
+    "purchaseCostUsdPerUnit": 11.283,
+    "fbaFeeUsdPerUnit": 8.31,
+    "inboundFreightUsdPerUnit": 3.44,
+    "referralFeeRate": 0.17,
+    "advertisingRate": 0.05,
+    "storageRate": 0.03,
+    "returnLossRate": 0.15,
+    "usdToCny": 6.75,
+    "weightedFixedCostUsdPerUnit": 23.033
+  },
+  "targetThresholds": {
+    "plannedInventoryUnits": 3000,
+    "targetSelloutInventoryUnits": 0,
+    "inventoryRedlineUnits": 100,
+    "minimumWeightedPriceUsd": 60.6131578947369,
+    "targetNetMarginRate": 0.22,
+    "targetAcosRate": 0.22,
+    "targetAdOrderShareRate": 0.15,
+    "targetOrganicCvrRate": 0.1,
+    "targetReturnRate": 0.12,
+    "preheatStartDate": "2026-09-25",
+    "mainPromotionStartDate": "2026-11-06",
+    "clearanceStartDate": "2026-12-10",
+    "promotionStopDate": "2026-12-22"
+  },
+  "dailyPlanRows": [],
+  "weeklyPlanRows": [
+    {
+      "startDate": "2026-09-25",
+      "endDate": "2026-10-01",
+      "phase": "冷启动测试",
+      "plannedUnits": 7,
+      "targetDailyUnits": 1,
+      "targetPriceUsd": 59.99
+    },
+    {
+      "startDate": "2026-10-02",
+      "endDate": "2026-10-08",
+      "phase": "冷启动测试",
+      "plannedUnits": 21,
+      "targetDailyUnits": 3,
+      "targetPriceUsd": 57.99
+    },
+    {
+      "startDate": "2026-10-09",
+      "endDate": "2026-10-15",
+      "phase": "测试收敛",
+      "plannedUnits": 21,
+      "targetDailyUnits": 3,
+      "targetPriceUsd": 62.99
+    },
+    {
+      "startDate": "2026-10-16",
+      "endDate": "2026-10-22",
+      "phase": "提前起量",
+      "plannedUnits": 35,
+      "targetDailyUnits": 5,
+      "targetPriceUsd": 63.99
+    },
+    {
+      "startDate": "2026-10-23",
+      "endDate": "2026-10-29",
+      "phase": "提前起量",
+      "plannedUnits": 56,
+      "targetDailyUnits": 8,
+      "targetPriceUsd": 63.99
+    },
+    {
+      "startDate": "2026-10-30",
+      "endDate": "2026-11-05",
+      "phase": "盈利前检查",
+      "plannedUnits": 161,
+      "targetDailyUnits": 23,
+      "targetPriceUsd": 59.99
+    },
+    {
+      "startDate": "2026-11-06",
+      "endDate": "2026-11-12",
+      "phase": "盈利放量",
+      "plannedUnits": 350,
+      "targetDailyUnits": 50,
+      "targetPriceUsd": 59.99
+    },
+    {
+      "startDate": "2026-11-13",
+      "endDate": "2026-11-19",
+      "phase": "盈利放量",
+      "plannedUnits": 490,
+      "targetDailyUnits": 70,
+      "targetPriceUsd": 56.99
+    },
+    {
+      "startDate": "2026-11-20",
+      "endDate": "2026-11-26",
+      "phase": "主利润期",
+      "plannedUnits": 840,
+      "targetDailyUnits": 120,
+      "targetPriceUsd": 56.99
+    },
+    {
+      "startDate": "2026-11-27",
+      "endDate": "2026-12-03",
+      "phase": "主利润期",
+      "plannedUnits": 560,
+      "targetDailyUnits": 80,
+      "targetPriceUsd": 59.99
+    },
+    {
+      "startDate": "2026-12-04",
+      "endDate": "2026-12-09",
+      "phase": "盈利收口",
+      "plannedUnits": 350,
+      "targetDailyUnits": 50,
+      "targetPriceUsd": 59.99
+    },
+    {
+      "startDate": "2026-12-10",
+      "endDate": "2026-12-13",
+      "phase": "清货启动",
+      "plannedUnits": 84,
+      "targetDailyUnits": 12,
+      "targetPriceUsd": 55.99
+    },
+    {
+      "startDate": "2026-12-14",
+      "endDate": "2026-12-18",
+      "phase": "强清尾货",
+      "plannedUnits": 35,
+      "targetDailyUnits": 5,
+      "targetPriceUsd": 52.99
+    },
+    {
+      "startDate": "2026-12-19",
+      "endDate": "2026-12-22",
+      "phase": "停推售后",
+      "plannedUnits": 0,
+      "targetDailyUnits": 0,
+      "targetPriceUsd": 49.99
+    }
+  ],
+  "unavailable": [
+    "Daily operating-plan rows are blank in 每日经营总表; dailyPlanRows is intentionally empty.",
+    "XL, 2XL, and 3XL production delivery dates are blank in 2026采购-fba到货周期.",
+    "The weekly source plan totals 3010 units, which conflicts with the verified 3000-unit procurement plan; rows are preserved without adjustment.",
+    "目标&假设 detailed size rows show 450/1650/600/300, conflicting with the procurement plan; sizeTotals uses the procurement sheet's 520/1600/550/330 values."
+  ]
+}
