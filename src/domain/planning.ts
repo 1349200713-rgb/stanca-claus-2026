@@ -91,10 +91,11 @@ export interface PromotionPlanOverride {
 export interface DailyOperationRecord {
   key: string;
   date: string;
-  time: string;
+  time?: string;
   action: string;
   risk: string;
   tomorrowPlan: string;
   status: "未完成" | "已完成";
+  note?: string;
   updatedAt: string;
 }

@@ -177,7 +177,7 @@ describe("Santa Ops dashboard", () => {
     expect(await screen.findByRole("heading", { name: "每日操作记录" })).toBeTruthy();
   });
 
-  test("opens daily operations page and saves time action risk and tomorrow plan", async () => {
+  test("opens daily operations page and saves action risk and tomorrow plan", async () => {
     configureOpsDbForTests(createMemoryIdbFactory());
 
     render(<Dashboard />);
@@ -186,14 +186,13 @@ describe("Santa Ops dashboard", () => {
 
     expect(await screen.findByRole("heading", { name: "每日操作记录" })).toBeTruthy();
     fireEvent.change(screen.getByLabelText("日期"), { target: { value: "2026-10-02" } });
-    fireEvent.change(screen.getByLabelText("时间"), { target: { value: "09:30" } });
     fireEvent.change(screen.getByLabelText("动作"), { target: { value: "提高核心词预算" } });
     fireEvent.change(screen.getByLabelText("风险"), { target: { value: "ACOS偏高" } });
     fireEvent.change(screen.getByLabelText("明日计划"), { target: { value: "复查转化率" } });
     fireEvent.click(screen.getByRole("button", { name: "保存每日操作" }));
 
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("每日操作已保存"));
-    expect(await opsDb.listDailyOperations()).toMatchObject([{ date: "2026-10-02", time: "09:30", action: "提高核心词预算", risk: "ACOS偏高", tomorrowPlan: "复查转化率" }]);
+    expect(await opsDb.listDailyOperations()).toMatchObject([{ date: "2026-10-02", action: "提高核心词预算", risk: "ACOS偏高", tomorrowPlan: "复查转化率" }]);
     expect(screen.getByRole("table", { name: "每日操作记录表" }).textContent).toContain("提高核心词预算");
   });
 
