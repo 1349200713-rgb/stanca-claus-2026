@@ -9,6 +9,7 @@ let server: typeof import("../../src/server/store");
 let route: typeof import("../../app/api/data/route");
 let cookie: string;
 let secondCookie: string;
+let operationCookie: string;
 const date = "2026-11-24";
 const updatedAt = "2026-11-24T10:00:00Z";
 const daily = { key: "daily:one", date, action: "Review ads", risk: "", tomorrowPlan: "", status: "未完成" as const, updatedAt };
@@ -17,8 +18,9 @@ const business = { key: "sales:one", date, asin: "ASIN", sku: "SKU", size: "L" a
 const log = { key: "import:one", filename: "sales.csv", importedAt: updatedAt, reportKind: "business" as const, rowCount: 1, issueCount: 0, duplicateCount: 0, action: "insert" as const };
 
 async function send(body: unknown, session = cookie) {
+  const requestCookie = session ? `${session}; ${operationCookie}` : session;
   return route.POST(new Request("http://shared.test/api/data", {
-    method: "POST", headers: { cookie: session, "content-type": "application/json", origin: "http://shared.test" }, body: JSON.stringify(body),
+    method: "POST", headers: { cookie: requestCookie, "content-type": "application/json", origin: "http://shared.test" }, body: JSON.stringify(body),
   }));
 }
 
@@ -31,17 +33,19 @@ async function readFromSecondComputer(store: string) {
 beforeAll(async () => {
   vi.stubEnv("SANTA_OPS_DATA_DIR", mkdtempSync(join(tmpdir(), "santa-sync-test-")));
   vi.stubEnv("SANTA_OPS_PASSWORD", "test-only-password");
-  vi.stubGlobal("window", { location: { hostname: "shared.test", reload() {} } });
+  vi.stubEnv("SANTA_OPS_OPERATION_PASSWORD", "test-operation-password");
+  vi.stubGlobal("window", { location: { hostname: "shared.test", reload() {} }, prompt: () => "test-operation-password" });
   vi.stubGlobal("indexedDB", createMemoryIdbFactory());
   server = await import("../../src/server/store");
   route = await import("../../app/api/data/route");
   client = await import("../../src/storage/db");
   cookie = `santa_ops_session=${server.createSession()}`;
   secondCookie = `santa_ops_session=${server.createSession()}`;
+  operationCookie = `santa_ops_write=${server.createOperationSession()}`;
   // Keep the real client, API and SQLite storage; replace only HTTP transport.
   vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
     const request = new Request(new URL(input, "http://shared.test"), {
-      ...init, headers: { ...init?.headers, cookie, origin: "http://shared.test" },
+      ...init, headers: { ...init?.headers, cookie: `${cookie}; ${operationCookie}`, origin: "http://shared.test" },
     });
     return request.method === "POST" ? route.POST(request) : route.GET(request);
   });
@@ -176,3 +180,4 @@ describe("shared storage across separate sessions", () => {
     local.close();
   });
 });
+

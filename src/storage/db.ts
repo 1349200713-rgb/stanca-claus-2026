@@ -110,7 +110,9 @@ async function remoteRequest<T>(input: RequestInfo | URL, init?: RequestInit): P
   if (!response.ok) {
     if (response.status === 401) window.location.reload();
     const body = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `服务器请求失败（${response.status}）`);
+    const error = new Error(body.error ?? `服务器请求失败（${response.status}）`);
+    (error as Error & { status?: number }).status = response.status;
+    throw error;
   }
   return decodeData<T>(await response.text());
 }
@@ -124,7 +126,18 @@ function remoteWrite(store: OpsStore, records: readonly unknown[], mode: "insert
 }
 
 function remoteBatch(operations: WriteOperation[]): Promise<WriteResult> {
-  return remoteRequest("/api/data", { method: "POST", headers: { "content-type": "application/json" }, body: encodeData({ operations }) });
+  const request = () => remoteRequest<WriteResult>("/api/data", { method: "POST", headers: { "content-type": "application/json" }, body: encodeData({ operations }) });
+  return request().catch(async (error: Error & { status?: number }) => {
+    if (error.status !== 428 || typeof window === "undefined") throw error;
+    const password = window.prompt("请输入操作密码");
+    if (!password) throw new Error("取消操作");
+    await remoteRequest("/api/auth/operation", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    return request();
+  });
 }
 
 function requestValue<T>(request: IDBRequest<T>): Promise<T> {
@@ -439,3 +452,4 @@ export async function migrateLocalDataToServer(): Promise<WriteResult> {
   if (!operations.length) return { written: 0, skipped: 0 };
   return remoteBatch(operations);
 }
+

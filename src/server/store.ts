@@ -31,8 +31,13 @@ function db(): DatabaseSync {
       token_hash TEXT PRIMARY KEY,
       expires_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS operation_sessions (
+      token_hash TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL
+    );
   `);
   ensurePassword();
+  ensureOperationPassword();
   return database;
 }
 
@@ -61,6 +66,11 @@ function ensurePassword(): void {
   setSetting("password_hash", hashPassword(process.env.SANTA_OPS_PASSWORD ?? "SantaOps2026!"));
 }
 
+function ensureOperationPassword(): void {
+  if (setting("operation_password_hash")) return;
+  setSetting("operation_password_hash", hashPassword(process.env.SANTA_OPS_OPERATION_PASSWORD ?? "SantaOpsOperation2026!"));
+}
+
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -73,6 +83,16 @@ export function verifyPassword(password: string): boolean {
 export function changePassword(password: string): void {
   setSetting("password_hash", hashPassword(password));
   db().prepare("DELETE FROM sessions").run();
+}
+
+export function verifyOperationPassword(password: string): boolean {
+  const stored = setting("operation_password_hash");
+  return Boolean(stored && passwordMatches(password, stored));
+}
+
+export function changeOperationPassword(password: string): void {
+  setSetting("operation_password_hash", hashPassword(password));
+  db().prepare("DELETE FROM operation_sessions").run();
 }
 
 export function createSession(): string {
@@ -92,6 +112,28 @@ export function isValidSession(token: string | undefined): boolean {
   if (!row) return false;
   if (Number(row.expires_at) <= Date.now()) {
     deleteSession(token);
+    return false;
+  }
+  return true;
+}
+
+export function createOperationSession(): string {
+  const token = randomBytes(32).toString("base64url");
+  const expiresAt = Date.now() + 1000 * 60 * 30;
+  db().prepare("INSERT INTO operation_sessions(token_hash, expires_at) VALUES(?, ?)").run(hashToken(token), expiresAt);
+  return token;
+}
+
+export function deleteOperationSession(token: string | undefined): void {
+  if (token) db().prepare("DELETE FROM operation_sessions WHERE token_hash = ?").run(hashToken(token));
+}
+
+export function isValidOperationSession(token: string | undefined): boolean {
+  if (!token) return false;
+  const row = db().prepare("SELECT expires_at FROM operation_sessions WHERE token_hash = ?").get(hashToken(token));
+  if (!row) return false;
+  if (Number(row.expires_at) <= Date.now()) {
+    deleteOperationSession(token);
     return false;
   }
   return true;
@@ -166,3 +208,4 @@ export function batchWrite(operations: WriteOperation[]): WriteResult {
     throw error;
   }
 }
+
