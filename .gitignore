@@ -45,3 +45,9 @@ yarn-error.log*
 server-*.log
 server-*.out.log
 server-*.err.log
+
+# Shared data and login sessions must never be committed.
+/data/
+*.sqlite
+*.sqlite-*
+*.sqlite.partial
