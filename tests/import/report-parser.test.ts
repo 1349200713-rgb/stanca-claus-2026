@@ -127,6 +127,21 @@ describe("report parser", () => {
 
     expect(result.records).toMatchObject([{ cpc: 1.25, ctr: 0.025, cvr: 0.1 }]);
   });
+
+  test("retains Amazon traffic fields while preserving blanks and explicit zero", () => {
+    const result = parseRows([{
+      日期: "2026-11-24",
+      卖家SKU: "A022-XXX-09-0B500",
+      已订购商品数量: "0",
+      已订购商品销售额: "0",
+      访问量: "40",
+      页面浏览量: "",
+      订单量: "0",
+    }], "business", skuMap);
+
+    expect(result.records).toMatchObject([{ units: 0, sales: 0, sessions: 40, orders: 0 }]);
+    expect((result.records[0] as BusinessRecord).pageViews).toBeUndefined();
+  });
 });
 
 describe("dedupe", () => {

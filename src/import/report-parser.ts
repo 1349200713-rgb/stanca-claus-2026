@@ -32,6 +32,9 @@ const aliases = {
   asin: ["asin"],
   units: ["units", "销量", "已订购商品数量"],
   sales: ["sales", "销售额", "已订购商品销售额"],
+  sessions: ["sessions", "访问量", "会话数"],
+  pageViews: ["page views", "pageviews", "页面浏览量"],
+  orders: ["orders", "订单量", "订单数", "总订单"],
   refunds: ["refunds", "refund units", "退款数量"],
   discounts: ["discounts", "discount", "折扣"],
   fbaAvailable: ["fba available", "available inventory", "可售库存"],
@@ -156,7 +159,7 @@ export function parseRows(rows: Row[], kind: ReportKind, skuMap: SkuMap): ParseR
       const asin = read(row, "asin");
       const units = numberValue(read(row, "units"));
       const sales = numberValue(read(row, "sales"));
-      const optionalNumber = (field: "refunds" | "discounts" | "fbaAvailable" | "reserved" | "unfulfillable") =>
+      const optionalNumber = (field: "sessions" | "pageViews" | "orders" | "refunds" | "discounts" | "fbaAvailable" | "reserved" | "unfulfillable") =>
         columnFor(row, field) ? numberValue(read(row, field)) : undefined;
       if (units === undefined) issues.push({ code: "MISSING_REQUIRED_VALUE", field: "units", row: rowNumber, message: "Missing or invalid units" });
       if (sales === undefined) issues.push({ code: "MISSING_REQUIRED_VALUE", field: "sales", row: rowNumber, message: "Missing or invalid sales" });
@@ -165,12 +168,18 @@ export function parseRows(rows: Row[], kind: ReportKind, skuMap: SkuMap): ParseR
       if (!date || units === undefined || sales === undefined || !size) return;
       const keyIdentifier = sku || asin;
       const refunds = optionalNumber("refunds");
+      const sessions = optionalNumber("sessions");
+      const pageViews = optionalNumber("pageViews");
+      const orders = optionalNumber("orders");
       const discounts = optionalNumber("discounts");
       const fbaAvailable = optionalNumber("fbaAvailable");
       const reserved = optionalNumber("reserved");
       const unfulfillable = optionalNumber("unfulfillable");
       records.push({
         key: `business:${date}:${canonical(keyIdentifier)}`, date, sku, asin, size, units, sales,
+        ...(sessions === undefined ? {} : { sessions }),
+        ...(pageViews === undefined ? {} : { pageViews }),
+        ...(orders === undefined ? {} : { orders }),
         ...(refunds === undefined ? {} : { refunds }),
         ...(discounts === undefined ? {} : { discounts }),
         ...(fbaAvailable === undefined ? {} : { fbaAvailable }),

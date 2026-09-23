@@ -1,6 +1,7 @@
 import { buildDailyPromotionPlan } from "../data/promotion-plan";
 import type { PromotionPlanOverride } from "../domain/planning";
 import type { AdRecord, BusinessRecord } from "../domain/types";
+import { calculateFunnelMetrics } from "../calc/funnel-metrics";
 
 type DailyPromotionPlan = ReturnType<typeof buildDailyPromotionPlan>[number];
 
@@ -11,10 +12,21 @@ type PromotionAnalyticsOverride = Omit<Partial<PromotionPlanOverride>,
 export type PromotionAnalyticsRow = DailyPromotionPlan & PromotionAnalyticsOverride & {
   actualUnits: number | null;
   actualSales: number | null;
-  adSpend: number;
-  adSales: number;
-  adOrders: number;
+  adSpend: number | null;
+  adSales: number | null;
+  adOrders: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  sessions: number | null;
+  totalOrders: number | null;
+  ctr: number | null;
+  cpc: number | null;
+  cvr: number | null;
+  adCvr: number | null;
   acos: number | null;
+  tacos: number | null;
+  organicOrders: number | null;
+  dataConflicts: string[];
   targetAcosNumber: number | null;
   plannedAdBudgetNumber: number | null;
   plannedSalesNumber: number | null;
@@ -39,14 +51,20 @@ function ratio(numerator: number | null, denominator: number | null): number | n
   return numerator / denominator;
 }
 
+function sumObserved<T>(rows: readonly T[], select: (row: T) => number | undefined): number | null {
+  const values = rows.map(select).filter((value): value is number => value !== undefined);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
+}
+
 function aggregateAds(rows: readonly AdRecord[]) {
-  const spend = rows.reduce((sum, row) => sum + row.spend, 0);
-  const adSales = rows.reduce((sum, row) => sum + row.adSales, 0);
+  const spend = rows.length ? rows.reduce((sum, row) => sum + row.spend, 0) : null;
+  const adSales = rows.length ? rows.reduce((sum, row) => sum + row.adSales, 0) : null;
   return {
     spend,
     adSales,
-    adOrders: rows.reduce((sum, row) => sum + row.adOrders, 0),
-    acos: ratio(spend, adSales),
+    adOrders: rows.length ? rows.reduce((sum, row) => sum + row.adOrders, 0) : null,
+    impressions: sumObserved(rows, (row) => row.impressions),
+    clicks: sumObserved(rows, (row) => row.clicks),
   };
 }
 
@@ -69,7 +87,19 @@ export function buildPromotionAnalyticsRows(input: {
       const dayBusiness = input.business.filter((row) => row.date === plan.date);
       const actualUnits = dayBusiness.length ? dayBusiness.reduce((sum, row) => sum + row.units, 0) : null;
       const actualSales = dayBusiness.length ? dayBusiness.reduce((sum, row) => sum + row.sales, 0) : null;
+      const sessions = sumObserved(dayBusiness, (row) => row.sessions);
+      const totalOrders = sumObserved(dayBusiness, (row) => row.orders);
       const ad = aggregateAds(input.ads.filter((row) => row.date === plan.date));
+      const funnel = calculateFunnelMetrics({
+        impressions: ad.impressions,
+        clicks: ad.clicks,
+        sessions,
+        adOrders: ad.adOrders,
+        totalOrders,
+        spend: ad.spend,
+        adSales: ad.adSales,
+        totalSales: actualSales,
+      });
       const targetAcosNumber = numberFromText(merged.targetAcos);
       const plannedAdBudgetNumber = numberFromText(merged.plannedAdBudget);
       const plannedSalesNumber = numberFromText(merged.plannedSales);
@@ -82,8 +112,8 @@ export function buildPromotionAnalyticsRows(input: {
       if (actualSales === null) anomalies.push("缺实际销售额");
       else if (salesCompletionRate !== null && salesCompletionRate < 0.8) anomalies.push("销售额未达标");
       if (adBudgetUsageRate !== null && adBudgetUsageRate > 1.15) anomalies.push("广告超预算");
-      if (ad.acos !== null && targetAcosNumber !== null && ad.acos > targetAcosNumber) anomalies.push("ACOS超目标");
-      if (ad.spend === 0 && merged.targetDailyUnits > 0) anomalies.push("有计划无广告数据");
+      if (funnel.acos !== null && targetAcosNumber !== null && funnel.acos > targetAcosNumber) anomalies.push("ACOS超目标");
+      if (ad.spend === null && merged.targetDailyUnits > 0) anomalies.push("有计划无广告数据");
       return {
         ...merged,
         actualUnits,
@@ -91,7 +121,18 @@ export function buildPromotionAnalyticsRows(input: {
         adSpend: ad.spend,
         adSales: ad.adSales,
         adOrders: ad.adOrders,
-        acos: ad.acos,
+        impressions: ad.impressions,
+        clicks: ad.clicks,
+        sessions,
+        totalOrders,
+        ctr: funnel.ctr,
+        cpc: funnel.cpc,
+        cvr: funnel.cvr,
+        adCvr: funnel.adCvr,
+        acos: funnel.acos,
+        tacos: funnel.tacos,
+        organicOrders: funnel.organicOrders,
+        dataConflicts: funnel.conflicts,
         targetAcosNumber,
         plannedAdBudgetNumber,
         plannedSalesNumber,
