@@ -1,0 +1,23 @@
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import type { ServerImportBatch, UpsertResult } from "../../db/ops-repository";
+import type { KeywordRankSnapshot } from "../domain/linkage";
+import { parseKeywordRankReport } from "../import/keyword-rank-parser";
+import { buildKeywordAnalytics } from "../integration/keyword-analytics";
+import { createHttpOpsRepository } from "../storage/http-ops-repository";
+
+interface KeywordRepository { list(resource: "keywords", filter: { marketplace: "US" }): Promise<KeywordRankSnapshot[]>; upsertBatch(resource: "keywords", records: readonly KeywordRankSnapshot[], batch: ServerImportBatch): Promise<UpsertResult>; delete(resource: "keywords", key: string): Promise<void> }
+const defaultRepository = createHttpOpsRepository() as unknown as KeywordRepository;
+const rank = (value: number | null, status: string) => status === "notIndexed" ? "未收录" : value ?? "—";
+
+export function KeywordRankingPage({ repository = defaultRepository, onBack }: { repository?: KeywordRepository; onBack: () => void }) {
+  const [rows, setRows] = useState<KeywordRankSnapshot[]>([]); const [message, setMessage] = useState(""); const [issues, setIssues] = useState<string[]>([]);
+  const refresh = () => repository.list("keywords", { marketplace: "US" }).then(setRows).catch((error) => setMessage(error instanceof Error ? error.message : "无法读取关键词数据"));
+  useEffect(() => { void refresh(); }, []);
+  const latest = rows.reduce((date, row) => row.date > date ? row.date : date, ""); const analytics = useMemo(() => buildKeywordAnalytics(rows, latest || "9999-12-31"), [rows, latest]);
+  async function upload(file?: File) { if (!file) return; const importedAt = new Date().toISOString(); const parsed = parseKeywordRankReport(await file.arrayBuffer(), file.name, importedAt); setIssues(parsed.issues); if (!parsed.records.length) { setMessage("没有可保存的关键词排名"); return; } const result = await repository.upsertBatch("keywords", parsed.records, { id: `keyword:${importedAt}`, filename: file.name, importedAt }); setMessage(`关键词排名已保存：新增 ${result.inserted}，更新 ${result.updated}`); await refresh(); }
+  return <main className="dashboard-shell promotion-shell"><header className="dashboard-header"><div className="brand-lockup"><span className="brand-mark">KW</span><div><p className="brand-kicker">KEYWORD RANKING</p><h1>关键词排名</h1><p className="as-of">自然位、广告位和竞品位置每日跟踪</p></div></div><button className="secondary-button" onClick={onBack}>返回经营驾驶舱</button></header>
+    <section className="promotion-kpi-grid" aria-label="关键词核心指标"><article className="kpi-card"><p className="kpi-card__label">核心关键词数</p><p className="kpi-card__value">{analytics.summary.tracked}</p></article><article className="kpi-card"><p className="kpi-card__label">前10名关键词</p><p className="kpi-card__value">{analytics.summary.top10}</p></article><article className="kpi-card"><p className="kpi-card__label">首页关键词</p><p className="kpi-card__value">{analytics.summary.firstPage}</p></article><article className="kpi-card"><p className="kpi-card__label">下降提醒</p><p className="kpi-card__value">{analytics.alerts.length}</p></article></section>
+    <section className="panel promotion-table-panel"><div className="panel-heading"><div><p className="eyebrow">DAILY RANK</p><h2>关键词每日排名</h2></div><label className="secondary-button" htmlFor="keyword-file">上传关键词排名</label></div><input id="keyword-file" className="sr-only" aria-label="上传关键词排名" type="file" accept=".csv,.xlsx,.xls" onChange={(event) => void upload(event.currentTarget.files?.[0])}/>{message ? <p role="status">{message}</p> : null}{issues.length ? <ul>{issues.map((item) => <li key={item}>{item}</li>)}</ul> : null}<div className="table-scroll"><table aria-label="关键词每日排名"><thead><tr><th>日期</th><th>ASIN</th><th>关键词</th><th>自然排名</th><th>广告排名</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><th>{row.date}</th><td>{row.asin}</td><td>{row.keyword}</td><td>{rank(row.organicRank, row.organicStatus)}</td><td>{rank(row.adRank, row.adStatus)}</td></tr>)}</tbody></table></div></section>
+    <section className="panel"><div className="panel-heading"><div><p className="eyebrow">RANK ALERTS</p><h2>关键词异常</h2></div></div>{analytics.alerts.length ? <ul className="action-list">{analytics.alerts.map((item) => <li key={item.id} className={item.severity === "risk" ? "status-risk" : "status-attention"}><strong>{item.keywordId}</strong><span>{item.detail}</span></li>)}</ul> : <p>暂无排名异常。</p>}</section></main>;
+}

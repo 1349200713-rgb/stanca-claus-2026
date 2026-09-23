@@ -14,6 +14,7 @@ import { PromotionReviewPage } from "../src/components/PromotionReviewPage";
 import { DailyOperationsPage } from "../src/components/DailyOperationsPage";
 import { DataMigrationPanel } from "../src/components/DataMigrationPanel";
 import { CompetitorPage } from "../src/components/CompetitorPage";
+import { KeywordRankingPage } from "../src/components/KeywordRankingPage";
 import { statusForTarget } from "../src/calc/status";
 import { loadPlan } from "../src/data/plan";
 import type { AdRecord, BusinessRecord, ManualRecord, SizeCode } from "../src/domain/types";
@@ -90,7 +91,7 @@ export default function Dashboard() {
   const [inboundEntries, setInboundEntries] = useState<InboundEntry[]>([]);
   const [promotionOverrides, setPromotionOverrides] = useState<PromotionPlanOverride[]>([]);
   const [dailyOperations, setDailyOperations] = useState<DailyOperationRecord[]>([]);
-  const [page, setPage] = useState<"dashboard" | "plan-inventory" | "promotion" | "promotion-review" | "daily-operations" | "competitors">("dashboard");
+  const [page, setPage] = useState<"dashboard" | "plan-inventory" | "promotion" | "promotion-review" | "daily-operations" | "competitors" | "keywords">("dashboard");
   const [loaded, setLoaded] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
@@ -237,6 +238,7 @@ export default function Dashboard() {
   if (page === "competitors") {
     return <CompetitorPage onBack={() => setPage("dashboard")} />;
   }
+  if (page === "keywords") return <KeywordRankingPage onBack={() => setPage("dashboard")} />;
 
   return (
     <main className="dashboard-shell">
@@ -251,6 +253,7 @@ export default function Dashboard() {
           <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("promotion-review")}>推广复盘图表</button>
           <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("daily-operations")}>每日操作</button>
           <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("competitors")}>竞品跟踪</button>
+          <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("keywords")}>关键词排名</button>
           <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("plan-inventory")}>计划与库存</button>
         </div>
       </header>

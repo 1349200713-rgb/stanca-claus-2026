@@ -1,4 +1,5 @@
 import type { KeywordRankSnapshot, RankStatus } from "../domain/linkage";
+import * as XLSX from "xlsx";
 
 export function parseRank(value: unknown): { rank: number | null; status: RankStatus } {
   const text = String(value ?? "").trim();
@@ -20,4 +21,12 @@ export function parseKeywordRankRows(rows: Record<string, unknown>[], updatedAt 
     records.push({ id: `keyword:US:${date}:${asin}:${id}`, marketplace: "US", date, keywordId: id, keyword: keyword.trim(), asin, organicRank: organic.rank, organicStatus: organic.status, adRank: ad.rank, adStatus: ad.status, updatedAt });
   });
   return { records, issues };
+}
+
+export function parseKeywordRankReport(input: ArrayBuffer, filename: string, updatedAt?: string) {
+  const extension = filename.split(".").pop()?.toLowerCase();
+  if (!extension || !["csv", "xlsx", "xls"].includes(extension)) return { records: [], issues: [`不支持的文件：${filename}`] };
+  const workbook = XLSX.read(input, { type: "array" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  return parseKeywordRankRows(XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" }), updatedAt);
 }
