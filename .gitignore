@@ -46,3 +46,7 @@ yarn-error.log*
 server-*.log
 server-*.out.log
 server-*.err.log
+/data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
