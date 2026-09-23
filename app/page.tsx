@@ -12,6 +12,7 @@ import { PlanInventoryPage } from "../src/components/PlanInventoryPage";
 import { PromotionPage } from "../src/components/PromotionPage";
 import { PromotionReviewPage } from "../src/components/PromotionReviewPage";
 import { DailyOperationsPage } from "../src/components/DailyOperationsPage";
+import { DataMigrationPanel } from "../src/components/DataMigrationPanel";
 import { statusForTarget } from "../src/calc/status";
 import { loadPlan } from "../src/data/plan";
 import type { AdRecord, BusinessRecord, ManualRecord, SizeCode } from "../src/domain/types";
@@ -19,9 +20,12 @@ import type { ActivePlan, DailyOperationRecord, InboundEntry, InventorySnapshot,
 import { buildDashboardSeries, evaluateDashboardRisks, selectDashboardSnapshot, targetsForSize } from "../src/integration/dashboard";
 import { buildPlanInventorySummary } from "../src/integration/plan-inventory";
 import { opsDb, type ImportLog } from "../src/storage/db";
+import { createHttpOpsRepository } from "../src/storage/http-ops-repository";
+import { migrateLocalData, previewLocalMigration } from "../src/storage/local-migration";
 
 const plan = loadPlan();
 const SIZES: SizeCode[] = ["L", "XL", "2XL", "3XL"];
+const cloudOpsRepository = createHttpOpsRepository();
 const money = (value: number | null) => value === null ? "数据不完整" : `US$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 const price = (value: number | null) => value === null ? "—" : `US$${value.toFixed(2)}`;
 const percent = (value: number | null) => value === null ? "—" : `${(value * 100).toFixed(1)}%`;
@@ -246,6 +250,10 @@ export default function Dashboard() {
         </div>
       </header>
       <section className="v2-dashboard-summary" aria-label="计划与库存摘要"><strong>计划与库存</strong><span>{activePlan ? `计划更新：${new Date(activePlan.updatedAt).toLocaleString("zh-CN")}` : "计划尚未初始化"}</span><span>{latestInventoryDate ? `库存快照：${latestInventoryDate}` : "尚无库存快照"}</span>{inventoryComplete ? null : <span>库存数据不足（缺少部分尺码或必填字段）</span>}<button type="button" onClick={() => setPage("plan-inventory")}>进入计划与库存</button></section>
+      <DataMigrationPanel
+        preview={previewLocalMigration}
+        migrate={() => migrateLocalData({ resources: ["business", "ads", "inventory", "inbound", "promotion", "dailyOps"], target: cloudOpsRepository })}
+      />
       {asinInboundSummary.length > 0 ? (
         <section className="panel asin-dashboard-panel" aria-labelledby="asin-dashboard-heading">
           <div className="panel-heading"><div><p className="eyebrow">ASIN INBOUND</p><h2 id="asin-dashboard-heading">ASIN 在途汇总</h2></div><span className="panel-meta">来自发货明细</span></div>

@@ -21,6 +21,7 @@ describe("Santa Ops dashboard", () => {
     expect(screen.getByRole("heading", { name: "毛利润 / 毛利率" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "广告花费 / ACOS" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "今日异常与动作" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "迁移本机数据" })).toBeTruthy();
 
     const kpis = within(screen.getByRole("region", { name: "核心指标" }))
       .getAllByTestId("kpi-label")
