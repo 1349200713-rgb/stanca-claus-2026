@@ -74,6 +74,7 @@ export function buildPromotionAnalyticsRows(input: {
   overrides: readonly PromotionPlanOverride[];
   startDate: string;
   endDate: string;
+  asOfDate?: string;
 }): PromotionAnalyticsRow[] {
   const overrideByDate = new Map(input.overrides.map((row) => [row.date, row]));
   return buildDailyPromotionPlan()
@@ -107,6 +108,8 @@ export function buildPromotionAnalyticsRows(input: {
       const salesCompletionRate = ratio(actualSales, plannedSalesNumber);
       const adBudgetUsageRate = ratio(ad.spend, plannedAdBudgetNumber);
       const anomalies: string[] = [];
+      const reached = plan.date <= (input.asOfDate ?? input.endDate);
+      if (!reached) return { ...merged, actualUnits, actualSales, adSpend: ad.spend, adSales: ad.adSales, adOrders: ad.adOrders, impressions: ad.impressions, clicks: ad.clicks, sessions, totalOrders, ctr: funnel.ctr, cpc: funnel.cpc, cvr: funnel.cvr, adCvr: funnel.adCvr, acos: funnel.acos, tacos: funnel.tacos, organicOrders: funnel.organicOrders, dataConflicts: funnel.conflicts, targetAcosNumber, plannedAdBudgetNumber, plannedSalesNumber, completionRate, salesCompletionRate, adBudgetUsageRate, anomalies };
       if (actualUnits === null) anomalies.push("缺实际销量");
       else if (completionRate !== null && completionRate < 0.8) anomalies.push("销量未达标");
       if (actualSales === null) anomalies.push("缺实际销售额");

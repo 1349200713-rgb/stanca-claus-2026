@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import Dashboard from "../../app/page";

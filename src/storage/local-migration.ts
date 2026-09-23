@@ -1,8 +1,9 @@
 import type { OpsResource } from "../../db/ops-repository";
 import { opsDb, type OpsStore } from "./db";
 
-type MigrationTarget = Pick<ReturnType<typeof targetShape>, "upsertBatch">;
-function targetShape() { return { upsertBatch: async (_resource: OpsResource, _records: readonly Record<string, unknown>[], _batch: { id: string; filename: string; importedAt: string }) => ({ inserted: 0, updated: 0, skipped: 0 }) }; }
+interface MigrationTarget {
+  upsertBatch(resource: OpsResource, records: readonly Record<string, unknown>[], batch: { id: string; filename: string; importedAt: string }): Promise<{ inserted: number; updated: number; skipped: number }>;
+}
 
 const resourceStores: Partial<Record<OpsResource, OpsStore>> = {
   business: "business",

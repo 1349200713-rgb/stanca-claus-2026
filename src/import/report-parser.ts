@@ -190,6 +190,8 @@ export function parseRows(rows: Row[], kind: ReportKind, skuMap: SkuMap): ParseR
     }
 
     const campaign = read(row, "campaign");
+    const asin = read(row, "asin").toUpperCase();
+    const sku = read(row, "sku").toUpperCase();
     const spend = numberValue(read(row, "spend"));
     const adSales = numberValue(read(row, "adSales"));
     const adOrders = numberValue(read(row, "adOrders"));
@@ -203,7 +205,9 @@ export function parseRows(rows: Row[], kind: ReportKind, skuMap: SkuMap): ParseR
     }
     if (!date || !campaign || spend === undefined || adSales === undefined || adOrders === undefined) return;
     records.push({
-      key: `ads:${date}:${canonical(campaign)}`, date, campaign, spend, adSales, adOrders,
+      key: `ads:${date}:${canonical(campaign)}${asin ? `:${canonical(asin)}` : ""}${sku ? `:${canonical(sku)}` : ""}`, date, campaign, spend, adSales, adOrders,
+      ...(asin ? { asin } : {}),
+      ...(sku ? { sku } : {}),
       ...(clicks === undefined ? {} : { clicks }),
       ...(impressions === undefined ? {} : { impressions }),
       ...(cpc === undefined ? {} : { cpc }),

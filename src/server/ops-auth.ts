@@ -7,7 +7,10 @@ function sameSecret(actual: string, expected: string): boolean {
 }
 
 export function isAuthorizedOpsRequest(request: Request): boolean {
-  if (request.headers.get("oai-authenticated-user-id")) return true;
+  const proxySecret = process.env.SANTA_OPS_PROXY_SECRET;
+  const proxyUser = request.headers.get("oai-authenticated-user-id");
+  const suppliedProxySecret = request.headers.get("x-santa-ops-proxy-secret") ?? "";
+  if (proxySecret && proxyUser && sameSecret(suppliedProxySecret, proxySecret)) return true;
   const expected = process.env.SANTA_OPS_API_TOKEN;
   if (!expected) return false;
   const authorization = request.headers.get("authorization") ?? "";

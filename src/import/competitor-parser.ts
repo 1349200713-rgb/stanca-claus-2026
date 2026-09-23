@@ -12,14 +12,22 @@ const read = (row: RawRow, names: readonly string[]) => {
   return key ? String(row[key] ?? "").trim() : "";
 };
 const number = (value: string): number | null => { const parsed = Number(value.replace(/[$,%\s,]/g, "")); return value && Number.isFinite(parsed) ? parsed : null; };
+function isoDate(value: unknown): string | null {
+  const serial = typeof value === "number" ? XLSX.SSF.parse_date_code(value) : null;
+  const text = serial ? `${serial.y}-${String(serial.m).padStart(2, "0")}-${String(serial.d).padStart(2, "0")}` : String(value ?? "").trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!match) return null;
+  const date = new Date(Date.UTC(+match[1], +match[2] - 1, +match[3]));
+  return date.getUTCFullYear() === +match[1] && date.getUTCMonth() === +match[2] - 1 && date.getUTCDate() === +match[3] ? text : null;
+}
 
 export function parseCompetitorRows(rows: RawRow[], updatedAt = new Date().toISOString()): { records: CompetitorSnapshot[]; issues: string[] } {
   const records: CompetitorSnapshot[] = [];
   const issues: string[] = [];
   rows.forEach((row, index) => {
-    const date = read(row, aliases.date);
+    const dateKey = Object.keys(row).find((candidate) => aliases.date.some((name) => candidate.trim().toLowerCase() === name.toLowerCase()));
+    const date = isoDate(dateKey ? row[dateKey] : undefined);
     const competitorAsin = read(row, aliases.competitorAsin).toUpperCase();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^B0[A-Z0-9]+$/.test(competitorAsin)) { issues.push(`第${index + 2}行：日期或竞品ASIN无效`); return; }
+    if (!date || !/^B0[A-Z0-9]+$/.test(competitorAsin)) { issues.push(`第${index + 2}行：日期或竞品ASIN无效`); return; }
     const coupon = read(row, aliases.coupon);
     records.push({
       id: `competitor:US:${date}:${competitorAsin}`, marketplace: "US", date, competitorAsin,

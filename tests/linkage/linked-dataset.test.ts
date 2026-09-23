@@ -26,4 +26,17 @@ describe("buildLinkedDataset", () => {
     expect(result.days[0].adSpend).toBeNull();
     expect(result.unmappedAds).toHaveLength(1);
   });
+
+  test("keeps absent optional metrics null and does not duplicate an ASIN-only ad across SKUs", () => {
+    const result = buildLinkedDataset({
+      business: [
+        { key: "b1", date: "2026-10-02", asin: "B0CFPYYPRN", sku: "SKU-1", size: "L", units: 1, sales: 60 },
+        { key: "b2", date: "2026-10-02", asin: "B0CFPYYPRN", sku: "SKU-2", size: "XL", units: 1, sales: 60 },
+      ],
+      ads: [{ key: "a", date: "2026-10-02", asin: "B0CFPYYPRN", campaign: "ASIN only", spend: 30, adSales: 60, adOrders: 1 }], traffic: [], promotion: [],
+    });
+    expect(result.days.map((row) => row.adSpend)).toEqual([null, null]);
+    expect(result.days.map((row) => row.clicks)).toEqual([null, null]);
+    expect(result.unmappedAds).toHaveLength(1);
+  });
 });

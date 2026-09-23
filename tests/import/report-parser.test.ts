@@ -34,6 +34,12 @@ describe("report parser", () => {
     expect((result.records[0] as AdRecord).key).toBe("ads:2026-11-24:holiday push");
   });
 
+  test("keeps ad ASIN and SKU dimensions so the row can join to a product", () => {
+    const result = parseRows([{ Date: "2026-11-24", Campaign: "Holiday Push", ASIN: "b0cfpr34mh", SKU: "A022-XXX-09-0B500", Spend: "10", "Ad Sales": "40", "Ad Orders": "1" }], "ads", skuMap);
+    expect(result.records[0]).toMatchObject({ asin: "B0CFPR34MH", sku: "A022-XXX-09-0B500" });
+    expect((result.records[0] as AdRecord).key).toContain("b0cfpr34mh");
+  });
+
   test("recognizes UTF-8 Chinese business headers", () => {
     const result = parseRows(
       [{ 日期: "2026-11-24", 卖家SKU: "A022-XXX-09-0B500", 已订购商品数量: "8", 已订购商品销售额: "506.16" }],

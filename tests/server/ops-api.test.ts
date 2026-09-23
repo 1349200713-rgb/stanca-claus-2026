@@ -24,6 +24,8 @@ describe("operations resource API", () => {
     setup();
     const response = await POST(new Request("http://local/api/ops/competitors", { method: "POST", body: "{}" }), { params: Promise.resolve({ resource: "competitors" }) });
     expect(response.status).toBe(401);
+    const spoofed = await POST(new Request("http://local/api/ops/competitors", { method: "POST", headers: { "oai-authenticated-user-id": "attacker" }, body: "{}" }), { params: Promise.resolve({ resource: "competitors" }) });
+    expect(spoofed.status).toBe(401);
   });
 
   test("writes and reads a validated resource batch", async () => {

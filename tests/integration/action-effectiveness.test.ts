@@ -13,4 +13,10 @@ describe("action effectiveness", () => {
     expect(result.threeDay).toMatchObject({ status: "ready", before: { units: 2 }, after: { units: 5 }, change: { units: 3 } });
     expect(result.sevenDay.status).toBe("waiting");
   });
+
+  test("does not count multiple size rows on one date as multiple observed days", () => {
+    const sameDay = ["L", "XL", "2XL", "3XL"].map((size) => ({ ...day("2026-10-05", 4), size: size as LinkedDay["size"], sku: `SKU-${size}` }));
+    const result = compareActionWindows({ key: "op", date: "2026-10-04", action: "调价", risk: "", tomorrowPlan: "", status: "已完成", updatedAt: "x", asin: "B0CFPYYPRN" }, [day("2026-10-01", 1), day("2026-10-02", 2), day("2026-10-03", 3), ...sameDay], "2026-10-05");
+    expect(result.threeDay).toMatchObject({ status: "waiting", remainingDays: 2 });
+  });
 });

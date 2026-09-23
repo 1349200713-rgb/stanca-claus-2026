@@ -13,8 +13,12 @@ describe("competitor report parser", () => {
   });
 
   test("rejects rows without a valid date or ASIN", () => {
-    const result = parseCompetitorRows([{ 日期: "", 竞品ASIN: "" }], "2026-10-02T01:00:00.000Z");
+    const result = parseCompetitorRows([{ 日期: "2026-99-99", 竞品ASIN: "B012345678" }], "2026-10-02T01:00:00.000Z");
     expect(result.records).toEqual([]);
     expect(result.issues).toHaveLength(1);
+  });
+
+  test("accepts an Excel serial date", () => {
+    expect(parseCompetitorRows([{ 日期: 46358, 竞品ASIN: "B012345678" }]).records[0]?.date).toBe("2026-12-02");
   });
 });

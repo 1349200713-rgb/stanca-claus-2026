@@ -30,14 +30,18 @@ export interface LinkedDatasetInput {
 }
 
 const normalized = (value: string) => value.trim().toUpperCase();
-const totalOrNull = (values: readonly (number | undefined)[]) => values.length ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0) : null;
+const totalOrNull = (values: readonly (number | undefined)[]) => {
+  const observed = values.filter((value): value is number => value !== undefined);
+  return observed.length ? observed.reduce((sum, value) => sum + value, 0) : null;
+};
 
 export function buildLinkedDataset(input: LinkedDatasetInput): { days: LinkedDay[]; unmappedAds: AdRecord[] } {
-  const unmappedAds = input.ads.filter((row) => !row.asin?.trim());
+  const businessDimensionCount = (ad: AdRecord) => input.business.filter((row) => row.date === ad.date && ad.asin && normalized(row.asin) === normalized(ad.asin)).length;
+  const unmappedAds = input.ads.filter((row) => !row.asin?.trim() || (!row.sku?.trim() && businessDimensionCount(row) > 1));
   const days = input.business.map((business) => {
     const asin = normalized(business.asin);
     const sku = normalized(business.sku);
-    const ads = input.ads.filter((row) => row.date === business.date && row.asin && normalized(row.asin) === asin);
+    const ads = input.ads.filter((row) => row.date === business.date && row.asin && normalized(row.asin) === asin && (row.sku ? normalized(row.sku) === sku : businessDimensionCount(row) === 1));
     const traffic = input.traffic.find((row) => row.date === business.date && normalized(row.asin) === asin && (!row.sku || normalized(row.sku) === sku));
     const impressions = totalOrNull(ads.map((row) => row.impressions));
     const clicks = totalOrNull(ads.map((row) => row.clicks));

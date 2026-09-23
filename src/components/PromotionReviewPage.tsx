@@ -20,7 +20,7 @@ const money = (value: number | null) => value === null ? "—" : `US$${value.toL
 const percent = (value: number | null) => value === null ? "—" : `${(value * 100).toFixed(1)}%`;
 
 export function PromotionReviewPage({ ads, business, overrides, operations, startDate, endDate, onBack }: PromotionReviewPageProps) {
-  const rows = buildPromotionAnalyticsRows({ ads, business, overrides, startDate, endDate });
+  const rows = buildPromotionAnalyticsRows({ ads, business, overrides, startDate, endDate, asOfDate: new Date().toISOString().slice(0, 10) });
   const [range, setRange] = useState<7 | 14 | 30 | "custom">(7);
   const [customStart, setCustomStart] = useState(startDate);
   const [customEnd, setCustomEnd] = useState(endDate);
@@ -52,7 +52,8 @@ export function PromotionReviewPage({ ads, business, overrides, operations, star
   const operationDates = new Set(operations.map((row) => row.date));
   const anomalyRows = rows.filter((row) => row.anomalies.length > 0).slice(0, 30);
   const totalTarget = rows.reduce((sum, row) => sum + row.targetDailyUnits, 0);
-  const totalActual = rows.reduce((sum, row) => sum + (row.actualUnits ?? 0), 0);
+  const observedActual = rows.map((row) => row.actualUnits).filter((value): value is number => value !== null);
+  const totalActual = observedActual.length ? observedActual.reduce((sum, value) => sum + value, 0) : null;
   const totalPlanAd = rows.reduce((sum, row) => sum + (row.plannedAdBudgetNumber ?? 0), 0);
   const observedAdSpend = rows.map((row) => row.adSpend).filter((value): value is number => value !== null);
   const totalAdSpend = observedAdSpend.length ? observedAdSpend.reduce((sum, value) => sum + value, 0) : null;
@@ -68,8 +69,8 @@ export function PromotionReviewPage({ ads, business, overrides, operations, star
       </header>
       <section className="promotion-kpi-grid" aria-label="推广复盘核心指标">
         <article><span>计划销量</span><strong>{Math.round(totalTarget)}</strong></article>
-        <article><span>实际销量</span><strong>{Math.round(totalActual)}</strong></article>
-        <article><span>销量完成率</span><strong>{percent(totalTarget ? totalActual / totalTarget : null)}</strong></article>
+        <article><span>实际销量</span><strong>{totalActual === null ? "—" : Math.round(totalActual)}</strong></article>
+        <article><span>销量完成率</span><strong>{percent(totalTarget && totalActual !== null ? totalActual / totalTarget : null)}</strong></article>
         <article><span>计划广告额度</span><strong>{money(totalPlanAd)}</strong></article>
         <article><span>实际广告花费</span><strong>{money(totalAdSpend)}</strong></article>
         <article><span>异常天数</span><strong>{rows.filter((row) => row.anomalies.length > 0).length}</strong></article>

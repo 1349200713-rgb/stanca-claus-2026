@@ -33,4 +33,9 @@ describe("promotion funnel analytics", () => {
     })[0];
     expect(zero).toMatchObject({ ctr: 0, cpc: 0, cvr: 0, adCvr: 0, acos: 0, tacos: 0, organicOrders: 0 });
   });
+
+  test("does not count future missing plans as operating anomalies", () => {
+    const row = buildPromotionAnalyticsRows({ ads: [], business: [], overrides: [], startDate: "2026-10-02", endDate: "2026-10-02", asOfDate: "2026-10-01" })[0];
+    expect(row.anomalies).toEqual([]);
+  });
 });
