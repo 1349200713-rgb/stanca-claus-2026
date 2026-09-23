@@ -36,6 +36,7 @@ test("server-renders the completed Santa Ops dashboard", async () => {
   assert.match(html, /计划销量 vs 实际销量/);
   assert.match(html, /库存与积压风险/);
   assert.match(html, /今日异常与动作/);
+  for (const label of ["经营驾驶舱", "计划与库存", "广告推广", "推广复盘图表", "关键词排名", "竞品跟踪", "每日操作"]) assert.match(html, new RegExp(label));
   assert.match(html, /data-chart-kind="line"/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });

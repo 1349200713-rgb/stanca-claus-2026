@@ -16,7 +16,10 @@
     "lint": "set \"PATH=C:\\Users\\sales07\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;%PATH%\" && eslint . --ignore-pattern dist --ignore-pattern .next",
     "plan:extract": "set \"PATH=C:\\Users\\sales07\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;%PATH%\" && node ../work/dashboard_analysis/extract_plan.mjs --write",
     "plan:check": "set \"PATH=C:\\Users\\sales07\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;%PATH%\" && node ../work/dashboard_analysis/extract_plan.mjs --check",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "ops:backup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-ops-db.ps1",
+    "ops:verify-backup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-ops-db.ps1 -VerifyOnly",
+    "ops:restore": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restore-ops-db.ps1"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

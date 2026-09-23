@@ -1,5 +1,7 @@
 # Santa Ops 2026 每日经营驾驶舱
 
+经营、广告、库存、推广、关键词、竞品与每日操作使用统一数据接口。阿里云上线及跨电脑迁移请遵循 [数据迁移与回滚说明](docs/deployment/aliyun-data-migration.md)。数据库备份使用 `pnpm ops:backup`，校验使用 `pnpm ops:verify-backup`。
+
 这是一个完全本地运行的圣诞服经营驾驶舱。业务报告、广告报告和手工记录只保存在当前浏览器的 IndexedDB（数据库名 `santa-ops`）中，不上传到服务器。
 
 ## 首次启动
