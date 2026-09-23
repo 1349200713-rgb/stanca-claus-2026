@@ -97,5 +97,15 @@ export interface DailyOperationRecord {
   tomorrowPlan: string;
   status: "未完成" | "已完成";
   note?: string;
+  category?: "调价" | "优惠券" | "广告预算" | "竞价" | "否词" | "关键词" | "Listing" | "站外推广" | "测评" | "库存" | "其他";
+  priority?: "低" | "中" | "高";
+  owner?: string;
+  dueDate?: string;
+  asin?: string;
+  sku?: string;
+  keywordId?: string;
+  competitorAsin?: string;
+  sourceAlertId?: string;
+  effectStatus?: "待观察" | "有效" | "无明显变化" | "负向" | "数据不足";
   updatedAt: string;
 }

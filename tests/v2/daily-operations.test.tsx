@@ -15,6 +15,7 @@ function csvFile(name: string, csv: string): File {
 
 afterEach(async () => {
   cleanup();
+  history.replaceState(null, "", "/");
   await resetOpsDbForTests();
 });
 

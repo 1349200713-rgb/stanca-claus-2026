@@ -19,6 +19,7 @@ import { createMemoryIdbFactory } from "../storage/memory-idb";
 
 afterEach(async () => {
   cleanup();
+  history.replaceState(null, "", "/");
   await resetOpsDbForTests();
 });
 

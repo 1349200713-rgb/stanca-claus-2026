@@ -8,12 +8,17 @@ import { createMemoryIdbFactory } from "../storage/memory-idb";
 
 afterEach(async () => {
   cleanup();
+  history.replaceState(null, "", "/");
   await resetOpsDbForTests();
 });
 
 describe("Santa Ops dashboard", () => {
   test("renders the approved sections and five KPI labels in order", () => {
     render(<Dashboard />);
+
+    const navigation = screen.getByRole("navigation", { name: "经营模块导航" });
+    expect(within(navigation).getAllByRole("button").map((button) => button.textContent)).toEqual(["经营驾驶舱", "计划与库存", "广告推广", "推广复盘图表", "关键词排名", "竞品跟踪", "每日操作"]);
+    expect(within(navigation).getByRole("button", { name: "经营驾驶舱" }).getAttribute("aria-current")).toBe("page");
 
     expect(screen.getByRole("heading", { name: "计划销量 vs 实际销量" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "库存与积压风险" })).toBeTruthy();
@@ -197,10 +202,14 @@ describe("Santa Ops dashboard", () => {
     fireEvent.change(screen.getByLabelText("动作"), { target: { value: "提高核心词预算" } });
     fireEvent.change(screen.getByLabelText("风险"), { target: { value: "ACOS偏高" } });
     fireEvent.change(screen.getByLabelText("明日计划"), { target: { value: "复查转化率" } });
+    fireEvent.change(screen.getByLabelText("分类"), { target: { value: "广告预算" } });
+    fireEvent.change(screen.getByLabelText("优先级"), { target: { value: "高" } });
+    fireEvent.change(screen.getByLabelText("负责人"), { target: { value: "运营A" } });
+    fireEvent.change(screen.getByLabelText("关联ASIN"), { target: { value: "B0CFPYYPRN" } });
     fireEvent.click(screen.getByRole("button", { name: "保存每日操作" }));
 
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("每日操作已保存"));
-    expect(await opsDb.listDailyOperations()).toMatchObject([{ date: "2026-10-02", action: "提高核心词预算", risk: "ACOS偏高", tomorrowPlan: "复查转化率" }]);
+    expect(await opsDb.listDailyOperations()).toMatchObject([{ date: "2026-10-02", action: "提高核心词预算", risk: "ACOS偏高", tomorrowPlan: "复查转化率", category: "广告预算", priority: "高", owner: "运营A", asin: "B0CFPYYPRN" }]);
     expect(screen.getByRole("table", { name: "每日操作记录表" }).textContent).toContain("提高核心词预算");
   });
 

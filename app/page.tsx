@@ -15,6 +15,7 @@ import { DailyOperationsPage } from "../src/components/DailyOperationsPage";
 import { DataMigrationPanel } from "../src/components/DataMigrationPanel";
 import { CompetitorPage } from "../src/components/CompetitorPage";
 import { KeywordRankingPage } from "../src/components/KeywordRankingPage";
+import { OpsNavigation, type OpsPage } from "../src/components/OpsNavigation";
 import { statusForTarget } from "../src/calc/status";
 import { loadPlan } from "../src/data/plan";
 import type { AdRecord, BusinessRecord, ManualRecord, SizeCode } from "../src/domain/types";
@@ -38,6 +39,12 @@ interface AsinInboundSummaryRow {
   productName: string;
   units: number;
   earliestArrivalDate: string | null;
+}
+
+const OPS_PAGES: OpsPage[] = ["dashboard", "plan-inventory", "promotion", "promotion-review", "daily-operations", "competitors", "keywords"];
+function queryValue(name: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  return new URLSearchParams(window.location.search).get(name) || fallback;
 }
 
 function summarizeInboundByAsin(entries: readonly InboundEntry[]): AsinInboundSummaryRow[] {
@@ -78,9 +85,12 @@ function manualKey(record: ManualRecord): string {
 }
 
 export default function Dashboard() {
-  const [startDate, setStartDate] = useState("2026-11-20");
-  const [endDate, setEndDate] = useState("2026-11-26");
-  const [size, setSize] = useState<DashboardSize>("all");
+  const [startDate, setStartDate] = useState(() => queryValue("startDate", "2026-11-20"));
+  const [endDate, setEndDate] = useState(() => queryValue("endDate", "2026-11-26"));
+  const [size, setSize] = useState<DashboardSize>(() => {
+    const value = queryValue("size", "all") as DashboardSize;
+    return value === "all" || SIZES.includes(value as SizeCode) ? value : "all";
+  });
   const [mode, setMode] = useState<DashboardMode>("daily");
   const [business, setBusiness] = useState<BusinessRecord[]>([]);
   const [ads, setAds] = useState<AdRecord[]>([]);
@@ -91,7 +101,10 @@ export default function Dashboard() {
   const [inboundEntries, setInboundEntries] = useState<InboundEntry[]>([]);
   const [promotionOverrides, setPromotionOverrides] = useState<PromotionPlanOverride[]>([]);
   const [dailyOperations, setDailyOperations] = useState<DailyOperationRecord[]>([]);
-  const [page, setPage] = useState<"dashboard" | "plan-inventory" | "promotion" | "promotion-review" | "daily-operations" | "competitors" | "keywords">("dashboard");
+  const [page, setPage] = useState<OpsPage>(() => {
+    const value = queryValue("page", "dashboard") as OpsPage;
+    return OPS_PAGES.includes(value) ? value : "dashboard";
+  });
   const [loaded, setLoaded] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
@@ -127,6 +140,13 @@ export default function Dashboard() {
       setDailyOperations(nextDailyOperations);
     }).catch(() => undefined).finally(() => setLoaded(true));
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("page", page); params.set("startDate", startDate); params.set("endDate", endDate); params.set("size", size);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }, [page, startDate, endDate, size]);
 
   const series = useMemo(() => buildDashboardSeries({ plan, business, ads, manual, startDate, endDate, size, mode, activePlan }),
     [business, ads, manual, startDate, endDate, size, mode, activePlan]);
@@ -238,7 +258,7 @@ export default function Dashboard() {
   if (page === "competitors") {
     return <CompetitorPage onBack={() => setPage("dashboard")} />;
   }
-  if (page === "keywords") return <KeywordRankingPage onBack={() => setPage("dashboard")} />;
+  if (page === "keywords") return <KeywordRankingPage onBack={() => setPage("dashboard")} onCreateOperation={async (record) => { await opsDb.saveDailyOperation(record); await refresh(); setPage("daily-operations"); }} />;
 
   return (
     <main className="dashboard-shell">
@@ -247,14 +267,9 @@ export default function Dashboard() {
           <p className="brand-kicker">DAILY OPERATIONS COCKPIT</p><h1>SANTA OPS 2026</h1>
           <p className="as-of">数据截至 {endDate} · 当前尺码：{size === "all" ? "全部" : size}</p>
         </div></div>
-        <div className="header-actions dashboard-module-nav" aria-label="经营模块导航">
+        <div className="header-actions">
           <button className="import-button" type="button" onClick={() => setShowImport((shown) => !shown)}><span aria-hidden="true">＋</span> 导入今日数据</button>
-          <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("promotion")}>广告推广</button>
-          <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("promotion-review")}>推广复盘图表</button>
-          <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("daily-operations")}>每日操作</button>
-          <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("competitors")}>竞品跟踪</button>
-          <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("keywords")}>关键词排名</button>
-          <button className="secondary-button dashboard-plan-link" type="button" onClick={() => setPage("plan-inventory")}>计划与库存</button>
+          <OpsNavigation current={page} onNavigate={setPage} />
         </div>
       </header>
       <section className="v2-dashboard-summary" aria-label="计划与库存摘要"><strong>计划与库存</strong><span>{activePlan ? `计划更新：${new Date(activePlan.updatedAt).toLocaleString("zh-CN")}` : "计划尚未初始化"}</span><span>{latestInventoryDate ? `库存快照：${latestInventoryDate}` : "尚无库存快照"}</span>{inventoryComplete ? null : <span>库存数据不足（缺少部分尺码或必填字段）</span>}<button type="button" onClick={() => setPage("plan-inventory")}>进入计划与库存</button></section>
