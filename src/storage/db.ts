@@ -1,7 +1,8 @@
 import type { AdRecord, BusinessRecord, ManualRecord, SizeCode } from "../domain/types";
 import type { ActivePlan, DailyOperationRecord, InboundEntry, InventorySnapshot, PlanChange, PromotionPlanOverride } from "../domain/planning";
 
-export type OpsStore = "business" | "ads" | "manual" | "imports" | "mappings" | "rawImports" | "rawRows" | "derivedResults" | "activePlan" | "planChanges" | "inventory" | "inbound" | "promotionPlan" | "dailyOps";
+import { decodeData, encodeData, storeNames, type OpsStore, type WriteOperation, type WriteResult } from "./protocol";
+export type { OpsStore } from "./protocol";
 type FormalStore = "business" | "ads" | "inventory";
 
 export interface ImportLog {
@@ -93,12 +94,51 @@ interface StoreRecordMap {
 
 const databaseName = "santa-ops";
 const databaseVersion = 5;
-const storeNames: OpsStore[] = ["business", "ads", "manual", "imports", "mappings", "rawImports", "rawRows", "derivedResults", "activePlan", "planChanges", "inventory", "inbound", "promotionPlan", "dailyOps"];
 const activePlanKey = "active-plan";
 
 let database: IDBDatabase | undefined;
 let opening: Promise<IDBDatabase> | undefined;
 let idbFactory: IDBFactory | undefined = globalThis.indexedDB;
+
+let localTestAdapter = false;
+function usesServer(): boolean {
+  return typeof window !== "undefined" && !localTestAdapter;
+}
+
+async function remoteRequest<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const response = await fetch(input, { credentials: "same-origin", cache: "no-store", ...init });
+  if (!response.ok) {
+    if (response.status === 401) window.location.reload();
+    const body = await response.json().catch(() => ({})) as { error?: string };
+    const error = new Error(body.error ?? `服务器请求失败（${response.status}）`);
+    (error as Error & { status?: number }).status = response.status;
+    throw error;
+  }
+  return decodeData<T>(await response.text());
+}
+
+function remoteRecords<K extends OpsStore>(store: K): Promise<StoreRecordMap[K][]> {
+  return remoteRequest<{ records: StoreRecordMap[K][] }>(`/api/data?store=${encodeURIComponent(store)}`).then((result) => result.records);
+}
+
+function remoteWrite(store: OpsStore, records: readonly unknown[], mode: "insert" | "replace"): Promise<void> {
+  return remoteBatch([{ store, records, mode }]).then(() => undefined);
+}
+
+function remoteBatch(operations: WriteOperation[]): Promise<WriteResult> {
+  const request = () => remoteRequest<WriteResult>("/api/data", { method: "POST", headers: { "content-type": "application/json" }, body: encodeData({ operations }) });
+  return request().catch(async (error: Error & { status?: number }) => {
+    if (error.status !== 428 || typeof window === "undefined") throw error;
+    const password = window.prompt("请输入操作密码");
+    if (!password) throw new Error("取消操作");
+    await remoteRequest("/api/auth/operation", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    return request();
+  });
+}
 
 function requestValue<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -153,6 +193,7 @@ function openDatabase(): Promise<IDBDatabase> {
 
 async function write<K extends OpsStore>(store: K, records: readonly StoreRecordMap[K][], mode: "add" | "put"): Promise<void> {
   if (!records.length) return;
+  if (usesServer()) return remoteWrite(store, records, mode === "add" ? "insert" : "replace");
   const db = await openDatabase();
   const transaction = db.transaction(store, "readwrite");
   const objectStore = transaction.objectStore(store);
@@ -163,6 +204,7 @@ async function write<K extends OpsStore>(store: K, records: readonly StoreRecord
 
 export const opsDb = {
   async list<K extends OpsStore>(store: K): Promise<StoreRecordMap[K][]> {
+    if (usesServer()) return remoteRecords(store);
     const db = await openDatabase();
     const transaction = db.transaction(store, "readonly");
     const records = await requestValue(transaction.objectStore(store).getAll());
@@ -185,6 +227,13 @@ export const opsDb = {
   },
 
   async saveActivePlan(plan: ActivePlan, change: PlanChange): Promise<void> {
+    if (usesServer()) {
+      await remoteBatch([
+        { store: "activePlan", records: [{ ...structuredClone(plan), key: activePlanKey }], mode: "replace" },
+        { store: "planChanges", records: [{ ...structuredClone(change), key: change.id }], mode: "insert" },
+      ]);
+      return;
+    }
     const db = await openDatabase();
     const transaction = db.transaction(["activePlan", "planChanges"], "readwrite");
     const done = transactionDone(transaction);
@@ -214,6 +263,10 @@ export const opsDb = {
   },
 
   async deleteInboundEntry(entry: InboundEntry): Promise<void> {
+    if (usesServer()) {
+      await remoteBatch([{ store: "inbound", deleteKeys: [inboundStorageKey(entry)] }]);
+      return;
+    }
     const db = await openDatabase();
     const transaction = db.transaction("inbound", "readwrite");
     const done = transactionDone(transaction);
@@ -237,6 +290,10 @@ export const opsDb = {
   },
 
   async deleteDailyOperation(key: string): Promise<void> {
+    if (usesServer()) {
+      await remoteBatch([{ store: "dailyOps", deleteKeys: [key] }]);
+      return;
+    }
     const db = await openDatabase();
     const transaction = db.transaction("dailyOps", "readwrite");
     const done = transactionDone(transaction);
@@ -244,6 +301,15 @@ export const opsDb = {
   },
 
   async archiveImportEvidence(log: ImportLog, evidence: ImportEvidence): Promise<void> {
+    if (usesServer()) {
+      const rawRowKeys = evidence.rawRows.map((_, index) => `raw-row:${log.key}:${index + 2}`);
+      await remoteBatch([
+        { store: "imports", records: [{ ...structuredClone(log), rawArtifactKey: `raw-artifact:${log.key}`, rawRowKeys, derivedResultKeys: [] }], mode: "insert" },
+        { store: "rawImports", records: [{ key: `raw-artifact:${log.key}`, importKey: log.key, filename: log.filename, importedAt: log.importedAt, reportKind: log.reportKind, byteLength: evidence.bytes.byteLength, bytes: evidence.bytes }], mode: "insert" },
+        { store: "rawRows", records: evidence.rawRows.map((values, index) => ({ key: rawRowKeys[index], importKey: log.key, rowNumber: index + 2, values })), mode: "insert" },
+      ]);
+      return;
+    }
     const db = await openDatabase();
     const rawArtifactKey = `raw-artifact:${log.key}`;
     const rawRowKeys = evidence.rawRows.map((_, index) => `raw-row:${log.key}:${index + 2}`);
@@ -272,6 +338,21 @@ export const opsDb = {
   },
 
   async commitImport<K extends FormalStore>(store: K, records: readonly StoreRecordMap[K][], log: ImportLog, evidence?: ImportEvidence): Promise<void> {
+    if (usesServer()) {
+      const operations: Array<{ store: OpsStore; records?: readonly unknown[]; mode?: "insert" | "replace" }> = [
+        { store, records, mode: log.action === "replace" ? "replace" : "insert" },
+        { store: "imports", records: [structuredClone(log)], mode: "insert" },
+      ];
+      if (evidence) {
+        const rawRowKeys = evidence.rawRows.map((_, index) => `raw-row:${log.key}:${index + 2}`);
+        operations[1] = { store: "imports", records: [{ ...structuredClone(log), rawArtifactKey: `raw-artifact:${log.key}`, rawRowKeys, derivedResultKeys: records.map((record, index) => `derived:${log.key}:${index}:${record.key}`) }], mode: "insert" };
+        operations.push({ store: "rawImports", records: [{ key: `raw-artifact:${log.key}`, importKey: log.key, filename: log.filename, importedAt: log.importedAt, reportKind: log.reportKind, byteLength: evidence.bytes.byteLength, bytes: evidence.bytes }], mode: "insert" });
+        operations.push({ store: "rawRows", records: evidence.rawRows.map((values, index) => ({ key: rawRowKeys[index], importKey: log.key, rowNumber: index + 2, values })), mode: "insert" });
+        operations.push({ store: "derivedResults", records: records.map((record, index) => ({ key: `derived:${log.key}:${index}:${record.key}`, importKey: log.key, reportKind: store, sourceRecordKey: record.key, record })), mode: "insert" });
+      }
+      await remoteBatch(operations);
+      return;
+    }
     const db = await openDatabase();
     const rawArtifactKey = `raw-artifact:${log.key}`;
     const rawRowKeys = evidence?.rawRows.map((_, index) => `raw-row:${log.key}:${index + 2}`) ?? [];
@@ -318,6 +399,10 @@ export const opsDb = {
   },
 
   async clear(store?: OpsStore): Promise<void> {
+    if (usesServer()) {
+      await remoteRequest("/api/data", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(store ? { store, clear: true } : { operations: storeNames.map((name) => ({ store: name, clear: true })) }) });
+      return;
+    }
     if (!store) {
       await Promise.all(storeNames.map((name) => opsDb.clear(name)));
       return;
@@ -329,10 +414,11 @@ export const opsDb = {
   },
 };
 
-/** Test-only adapter point. Production always uses the browser's native IndexedDB factory. */
+/** Existing offline tests use IndexedDB explicitly; deployed browsers always use the API. */
 export function configureOpsDbForTests(factory: IDBFactory | undefined): void {
   if (database || opening) throw new Error("Close the database before changing the IndexedDB factory");
   idbFactory = factory;
+  localTestAdapter = true;
 }
 
 /** Closes the cached connection so the next operation behaves like a browser reload. */
@@ -349,4 +435,21 @@ export async function resetOpsDbForTests(): Promise<void> {
   if (idbFactory) await opsDb.clear();
   await closeOpsDbForTests();
   idbFactory = globalThis.indexedDB;
+  localTestAdapter = false;
 }
+
+/** Uploads the browser's pre-server data into the shared server store once. */
+export async function migrateLocalDataToServer(): Promise<WriteResult> {
+  if (!usesServer()) throw new Error("当前环境未启用服务器存储");
+  const localDatabase = await openDatabase();
+  const recordsByStore = await Promise.all(storeNames.map(async (store) => {
+    const transaction = localDatabase.transaction(store, "readonly");
+    return [store, await requestValue(transaction.objectStore(store).getAll())] as const;
+  }));
+  const operations = recordsByStore
+    .filter(([, records]) => records.length > 0)
+    .map(([store, records]) => ({ store, records, mode: "merge" as const }));
+  if (!operations.length) return { written: 0, skipped: 0 };
+  return remoteBatch(operations);
+}
+

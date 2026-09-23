@@ -50,3 +50,5 @@ server-*.err.log
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+*.sqlite-*
+*.sqlite.partial

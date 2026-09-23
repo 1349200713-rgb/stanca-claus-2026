@@ -25,6 +25,7 @@ import { buildPlanInventorySummary } from "../src/integration/plan-inventory";
 import { opsDb, type ImportLog } from "../src/storage/db";
 import { createHttpOpsRepository } from "../src/storage/http-ops-repository";
 import { migrateLocalData, previewLocalMigration } from "../src/storage/local-migration";
+import { AuthGate } from "../src/components/AuthGate";
 
 const plan = loadPlan();
 const SIZES: SizeCode[] = ["L", "XL", "2XL", "3XL"];
@@ -84,7 +85,7 @@ function manualKey(record: ManualRecord): string {
   return `manual:${record.date}:${record.size}:${suffix}`;
 }
 
-export default function Dashboard() {
+function DashboardContent() {
   const [startDate, setStartDate] = useState(() => queryValue("startDate", "2026-11-20"));
   const [endDate, setEndDate] = useState(() => queryValue("endDate", "2026-11-26"));
   const [size, setSize] = useState<DashboardSize>(() => {
@@ -324,4 +325,8 @@ export default function Dashboard() {
       <footer className="dashboard-footer">SANTA OPS · LOCAL OPERATING VIEW · 2026</footer>
     </main>
   );
+}
+
+export default function Dashboard() {
+  return <AuthGate><DashboardContent /></AuthGate>;
 }
