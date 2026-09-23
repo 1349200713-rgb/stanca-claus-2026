@@ -178,6 +178,13 @@ describe("Santa Ops dashboard", () => {
     expect(await screen.findByRole("heading", { name: "每日操作记录" })).toBeTruthy();
   });
 
+  test("opens competitor tracking from the home cockpit", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    render(<Dashboard />);
+    fireEvent.click(screen.getByRole("button", { name: "竞品跟踪" }));
+    expect(await screen.findByRole("heading", { name: "竞品跟踪" })).toBeTruthy();
+  });
+
   test("opens daily operations page and saves action risk and tomorrow plan", async () => {
     configureOpsDbForTests(createMemoryIdbFactory());
 
