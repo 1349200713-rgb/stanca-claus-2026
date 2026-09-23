@@ -18,11 +18,15 @@ export interface PlanRow {
 export interface BusinessRecord {
   key: string;
   date: string;
+  marketplace?: "US";
   asin: string;
   sku: string;
   size: SizeCode;
   units: number;
   sales: number;
+  sessions?: number;
+  pageViews?: number;
+  orders?: number;
   refunds?: number;
   discounts?: number;
   fbaAvailable?: number;
@@ -33,6 +37,9 @@ export interface BusinessRecord {
 export interface AdRecord {
   key: string;
   date: string;
+  marketplace?: "US";
+  asin?: string;
+  sku?: string;
   campaign: string;
   spend: number;
   adSales: number;
