@@ -55,8 +55,10 @@ export function createHttpOpsRepository(options: HttpOpsOptions = {}): ClientOps
       });
     },
     async delete(resource: OpsResource, stableKey: string): Promise<void> {
-      const response = await request(new Request(endpoint(`${resource}?key=${encodeURIComponent(stableKey)}`), { method: "DELETE", headers: headers() }));
-      if (!response.ok) await payloadOrError(response);
+      return unlockAndRetry(async () => {
+        const response = await request(new Request(endpoint(`${resource}?key=${encodeURIComponent(stableKey)}`), { method: "DELETE", headers: headers() }));
+        if (!response.ok) await payloadOrError(response);
+      });
     },
   };
 }

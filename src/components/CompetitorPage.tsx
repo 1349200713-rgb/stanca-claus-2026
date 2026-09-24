@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { ServerImportBatch, UpsertResult } from "../../db/ops-repository";
 import type { CompetitorSnapshot } from "../domain/linkage";
 import { parseCompetitorReport } from "../import/competitor-parser";
 import { buildCompetitorAnalytics } from "../integration/competitor-analytics";
 import { createHttpOpsRepository } from "../storage/http-ops-repository";
+import { CompetitorEditRow, competitorDraft, competitorRecord, type CompetitorEditDraft } from "./CompetitorEditRow";
 import { TrendChart } from "./TrendChart";
 
 interface CompetitorRepository {
@@ -29,6 +30,9 @@ export function CompetitorPage({ repository = defaultRepository, onBack }: { rep
   const [dateFilter, setDateFilter] = useState("");
   const [asinFilter, setAsinFilter] = useState("");
   const [sizeFilter, setSizeFilter] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [editDraft, setEditDraft] = useState<CompetitorEditDraft | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
   const refresh = () => repository.list("competitors", { marketplace: "US" }).then(setRows).catch((error) => setMessage(error instanceof Error ? error.message : "无法读取竞品数据"));
   useEffect(() => { void refresh(); }, []);
   const latestDate = rows.reduce((latest, row) => row.date > latest ? row.date : latest, "");
@@ -60,6 +64,45 @@ export function CompetitorPage({ repository = defaultRepository, onBack }: { rep
     await refresh();
   }
 
+  function beginEdit(row: CompetitorSnapshot) {
+    setEditingId(row.id);
+    setEditDraft(competitorDraft(row));
+    setMessage("");
+  }
+
+  async function saveEdit(row: CompetitorSnapshot) {
+    if (!editDraft) return;
+    setEditBusy(true);
+    try {
+      const record = competitorRecord(row, editDraft);
+      const now = new Date().toISOString();
+      await repository.upsertBatch("competitors", [record], { id: `competitor-edit:${row.id}:${now}`, filename: "页面手动编辑", importedAt: now, source: "manual-edit" });
+      setEditingId("");
+      setEditDraft(null);
+      await refresh();
+      setMessage("竞品记录已更新");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "竞品记录保存失败");
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
+  async function removeRow(row: CompetitorSnapshot) {
+    if (!window.confirm(`确认删除 ${row.brand ?? row.competitorAsin} / ${row.size ?? "无尺码"} / ${row.date}？`)) return;
+    setEditBusy(true);
+    try {
+      await repository.delete("competitors", row.id);
+      if (editingId === row.id) { setEditingId(""); setEditDraft(null); }
+      await refresh();
+      setMessage("竞品记录已删除");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "竞品记录删除失败");
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
   return <main className="dashboard-shell promotion-shell">
     <header className="dashboard-header"><div className="brand-lockup"><span className="brand-mark" aria-hidden="true">CP</span><div><p className="brand-kicker">COMPETITOR TRACKING</p><h1>竞品跟踪</h1><p className="as-of">价格、促销、评价与BSR每日变化</p></div></div><button className="secondary-button" type="button" onClick={onBack}>返回经营驾驶舱</button></header>
     <section className="competitor-kpi-grid" aria-label="竞品核心指标">
@@ -85,7 +128,7 @@ export function CompetitorPage({ repository = defaultRepository, onBack }: { rep
     <section className="panel promotion-table-panel"><div className="panel-heading"><div><p className="eyebrow">IMPORT & DETAIL</p><h2>竞品每日明细</h2></div><label className="secondary-button" htmlFor="competitor-file">上传竞品数据</label></div>
       <input id="competitor-file" className="sr-only" aria-label="上传竞品数据" type="file" accept=".csv,.xlsx,.xls" onChange={(event) => void upload(event.currentTarget.files?.[0])} />
       {message ? <p role="status">{message}</p> : null}{issues.length ? <ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : null}
-      <div className="table-scroll competitor-detail-table"><table aria-label="竞品每日明细"><thead><tr><th>日期</th><th>类型</th><th>品牌 / ASIN</th><th>尺码</th><th>页面售价</th><th>优惠后价格</th><th>Coupon</th><th>CODE</th><th>Prime Savings</th><th>评分</th><th>大类排名</th><th>小类排名</th><th>颜色/款式</th><th>备注</th><th>链接</th></tr></thead><tbody>{filteredRows.map((row) => <tr key={row.id} className={row.isOwnProduct ? "competitor-own-row" : undefined}><th>{row.date}</th><td>{row.isOwnProduct ? "自有基准" : "竞品"}</td><td><strong>{row.brand ?? "—"}</strong><br />{row.competitorAsin}</td><td>{row.size ?? "—"}</td><td>{money(row.price)}</td><td>{money(row.effectivePrice)}</td><td>{row.couponPercent != null ? `${row.couponPercent}%` : row.couponAmount != null ? money(row.couponAmount) : "—"}</td><td>{value(row.codePercent, "%")}</td><td>{row.primeSavings || "—"}</td><td>{value(row.rating)}</td><td>{value(row.categoryRank)}</td><td>{value(row.subcategoryRank ?? row.bsrRank)}</td><td>{row.colorStyle || "—"}</td><td>{row.note || "—"}</td><td>{row.source ? <a href={row.source} target="_blank" rel="noreferrer">打开</a> : "—"}</td></tr>)}</tbody></table></div>
+      <div className="table-scroll competitor-detail-table"><table aria-label="竞品每日明细"><thead><tr><th>日期</th><th>类型</th><th>品牌 / ASIN</th><th>尺码</th><th>页面售价</th><th>优惠后价格</th><th>Coupon</th><th>CODE</th><th>Prime Savings</th><th>评分</th><th>大类排名</th><th>小类排名</th><th>颜色/款式</th><th>备注</th><th>链接</th><th>操作</th></tr></thead><tbody>{filteredRows.map((row) => <Fragment key={row.id}><tr className={row.isOwnProduct ? "competitor-own-row" : undefined}><th>{row.date}</th><td>{row.isOwnProduct ? "自有基准" : "竞品"}</td><td><strong>{row.brand ?? "—"}</strong><br />{row.competitorAsin}{row.productName ? <><br /><span>{row.productName}</span></> : null}</td><td>{row.size ?? "—"}</td><td>{money(row.price)}</td><td>{money(row.effectivePrice)}</td><td>{row.couponPercent != null ? `${row.couponPercent}%` : row.couponAmount != null ? money(row.couponAmount) : "—"}</td><td>{value(row.codePercent, "%")}</td><td>{row.primeSavings || "—"}</td><td>{value(row.rating)}</td><td>{value(row.categoryRank)}</td><td>{value(row.subcategoryRank ?? row.bsrRank)}</td><td>{row.colorStyle || "—"}</td><td>{row.note || "—"}</td><td>{row.source ? <a href={row.source} target="_blank" rel="noreferrer">打开</a> : "—"}</td><td><div className="table-action-group"><button type="button" className="table-action-button" aria-label={`编辑 ${row.brand ?? row.competitorAsin} ${row.size ?? "无尺码"} ${row.date}`} onClick={() => beginEdit(row)}>编辑</button><button type="button" className="table-action-button table-action-button--danger" aria-label={`删除 ${row.brand ?? row.competitorAsin} ${row.size ?? "无尺码"} ${row.date}`} onClick={() => void removeRow(row)}>删除</button></div></td></tr>{editingId === row.id && editDraft ? <CompetitorEditRow row={row} draft={editDraft} busy={editBusy} onChange={setEditDraft} onSave={() => void saveEdit(row)} onCancel={() => { setEditingId(""); setEditDraft(null); }} /> : null}</Fragment>)}</tbody></table></div>
     </section>
     <section className="panel"><div className="panel-heading"><div><p className="eyebrow">ALERTS</p><h2>竞品动态提醒</h2></div></div>{analytics.alerts.length ? <ul className="action-list">{analytics.alerts.map((alert) => <li key={alert.id} className={alert.severity === "risk" ? "status-risk" : "status-attention"}><strong>{alert.competitorAsin}</strong><span>{alert.detail}</span></li>)}</ul> : <p>暂无竞品异常。</p>}</section>
   </main>;

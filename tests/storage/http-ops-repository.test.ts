@@ -45,4 +45,19 @@ describe("HTTP operations repository", () => {
       "/api/ops/competitors",
     ]);
   });
+
+  test("uses the same operation unlock flow when deleting a record", async () => {
+    vi.stubGlobal("window", { location: { origin: "http://shared.test" }, prompt: () => "write-password" });
+    const requests: Request[] = [];
+    const repository = createHttpOpsRepository({ fetch: async (input) => {
+      const request = input as Request;
+      requests.push(request);
+      if (request.url.endsWith("/api/auth/operation")) return Response.json({ ok: true });
+      if (requests.filter((item) => item.method === "DELETE").length === 1) return Response.json({ error: "需要操作密码" }, { status: 428 });
+      return new Response(null, { status: 204 });
+    } });
+
+    await expect(repository.delete("competitors", "row-one")).resolves.toBeUndefined();
+    expect(requests.map((request) => request.method)).toEqual(["DELETE", "POST", "DELETE"]);
+  });
 });

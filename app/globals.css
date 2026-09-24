@@ -607,6 +607,17 @@ h1 {
 .competitor-detail-table table { min-width: 1900px; }
 .competitor-own-row { background: var(--complete-bg); }
 .competitor-detail-table a { color: var(--brand); font-weight: 800; }
+.table-action-group { display: flex; gap: 6px; align-items: center; }
+.table-action-button { border: 1px solid #c8c1b6; border-radius: 6px; padding: 6px 9px; background: #fff; color: #273241; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.table-action-button:hover { border-color: var(--brand); color: var(--brand); }
+.table-action-button--danger { color: var(--brand); }
+.competitor-edit-row > td { padding: 14px; background: #fbf7f1; border-top: 2px solid #b21f2d; }
+.competitor-edit-grid { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 10px; min-width: 1180px; }
+.competitor-edit-grid label { display: grid; gap: 5px; color: #555d68; font-size: 11px; font-weight: 800; }
+.competitor-edit-grid input { width: 100%; min-height: 36px; border: 1px solid #c8c1b6; border-radius: 6px; padding: 6px 8px; background: #fff; color: #111827; }
+.competitor-edit-grid input:focus { border-color: var(--brand); outline: 2px solid rgb(178 31 45 / 12%); }
+.competitor-edit-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; min-width: 1180px; }
+.competitor-edit-actions span { margin-right: auto; color: #6b7280; font-size: 12px; font-weight: 800; }
 .promotion-date-display { display: inline-block; min-width: 56px; white-space: nowrap; }
 .promotion-table-panel .daily-operations-table { width: 100%; min-width: 1000px; table-layout: fixed; }
 .daily-operations-table .daily-operation-date-column { width: 118px; }
