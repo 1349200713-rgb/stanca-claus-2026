@@ -1,5 +1,5 @@
 import { getOpsRepository } from "../../../../db/ops-server";
-import { isAuthorizedOpsRequest, unauthorizedResponse } from "../../../../src/server/ops-auth";
+import { isAuthorizedOpsRequest, opsWriteAuthorizationError, unauthorizedResponse } from "../../../../src/server/ops-auth";
 import { parseOpsResource, validateResourceWrite } from "../../../../src/server/ops-validation";
 
 interface RouteContext { params: Promise<{ resource: string }> }
@@ -22,7 +22,8 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
 }
 
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
-  if (!isAuthorizedOpsRequest(request)) return unauthorizedResponse();
+  const authorizationError = opsWriteAuthorizationError(request);
+  if (authorizationError) return authorizationError;
   const resource = parseOpsResource((await context.params).resource);
   if (!resource) return Response.json({ error: "未知数据类型" }, { status: 404 });
   try {
@@ -35,7 +36,8 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
 }
 
 export async function DELETE(request: Request, context: RouteContext): Promise<Response> {
-  if (!isAuthorizedOpsRequest(request)) return unauthorizedResponse();
+  const authorizationError = opsWriteAuthorizationError(request);
+  if (authorizationError) return authorizationError;
   const resource = parseOpsResource((await context.params).resource);
   if (!resource) return Response.json({ error: "未知数据类型" }, { status: 404 });
   const stableKey = new URL(request.url).searchParams.get("key");

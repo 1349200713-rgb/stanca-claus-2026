@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { isValidOperationSession, isValidSession } from "./store";
 
 function sameSecret(actual: string, expected: string): boolean {
   const actualBytes = Buffer.from(actual);
@@ -6,7 +7,11 @@ function sameSecret(actual: string, expected: string): boolean {
   return actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes);
 }
 
-export function isAuthorizedOpsRequest(request: Request): boolean {
+function cookie(request: Request, name: string): string | undefined {
+  return request.headers.get("cookie")?.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))?.[1];
+}
+
+function hasServiceAuthorization(request: Request): boolean {
   const proxySecret = process.env.SANTA_OPS_PROXY_SECRET;
   const proxyUser = request.headers.get("oai-authenticated-user-id");
   const suppliedProxySecret = request.headers.get("x-santa-ops-proxy-secret") ?? "";
@@ -16,6 +21,19 @@ export function isAuthorizedOpsRequest(request: Request): boolean {
   const authorization = request.headers.get("authorization") ?? "";
   const actual = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
   return Boolean(actual) && sameSecret(actual, expected);
+}
+
+export function isAuthorizedOpsRequest(request: Request): boolean {
+  return hasServiceAuthorization(request) || isValidSession(cookie(request, "santa_ops_session"));
+}
+
+export function opsWriteAuthorizationError(request: Request): Response | undefined {
+  if (hasServiceAuthorization(request)) return undefined;
+  if (!isValidSession(cookie(request, "santa_ops_session"))) return unauthorizedResponse();
+  if (!isValidOperationSession(cookie(request, "santa_ops_write"))) {
+    return Response.json({ error: "需要操作密码" }, { status: 428 });
+  }
+  return undefined;
 }
 
 export function unauthorizedResponse(): Response {

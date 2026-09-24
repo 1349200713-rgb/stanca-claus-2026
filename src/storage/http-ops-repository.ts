@@ -9,7 +9,11 @@ interface HttpOpsOptions {
 
 async function payloadOrError<T>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => ({})) as { error?: string };
-  if (!response.ok) throw new Error(payload.error ?? `经营数据请求失败（${response.status}）`);
+  if (!response.ok) {
+    const error = new Error(payload.error ?? `经营数据请求失败（${response.status}）`);
+    (error as Error & { status?: number }).status = response.status;
+    throw error;
+  }
   return payload as T;
 }
 
@@ -24,6 +28,18 @@ export function createHttpOpsRepository(options: HttpOpsOptions = {}): ClientOps
     if (json) result.set("content-type", "application/json");
     return result;
   };
+  const unlockAndRetry = async <T>(operation: () => Promise<T>): Promise<T> => operation().catch(async (error: Error & { status?: number }) => {
+    if (error.status !== 428 || typeof window === "undefined") throw error;
+    const password = window.prompt("请输入操作密码");
+    if (!password) throw new Error("取消操作");
+    const unlock = await request(new Request(endpoint("../auth/operation"), {
+      method: "POST",
+      headers: headers(true),
+      body: JSON.stringify({ password }),
+    }));
+    await payloadOrError(unlock);
+    return operation();
+  });
   return {
     async list<T extends Record<string, unknown>>(resource: OpsResource, filter: OpsFilter = {}): Promise<T[]> {
       const query = new URLSearchParams();
@@ -33,8 +49,10 @@ export function createHttpOpsRepository(options: HttpOpsOptions = {}): ClientOps
       return (await payloadOrError<{ records: T[] }>(response)).records;
     },
     async upsertBatch(resource: OpsResource, records: readonly Record<string, unknown>[], importBatch: ServerImportBatch): Promise<UpsertResult> {
-      const response = await request(new Request(endpoint(resource), { method: "POST", headers: headers(true), body: JSON.stringify({ records, importBatch }) }));
-      return payloadOrError<UpsertResult>(response);
+      return unlockAndRetry(async () => {
+        const response = await request(new Request(endpoint(resource), { method: "POST", headers: headers(true), body: JSON.stringify({ records, importBatch }) }));
+        return payloadOrError<UpsertResult>(response);
+      });
     },
     async delete(resource: OpsResource, stableKey: string): Promise<void> {
       const response = await request(new Request(endpoint(`${resource}?key=${encodeURIComponent(stableKey)}`), { method: "DELETE", headers: headers() }));
