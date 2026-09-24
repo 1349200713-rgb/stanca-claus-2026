@@ -599,6 +599,14 @@ h1 {
 .promotion-table-panel input,
 .promotion-table-panel textarea { width: 100%; min-height: 32px; border: 1px solid #d6d1c8; border-radius: 6px; padding: 5px 7px; background: #fff; font: inherit; line-height: 1.35; }
 .promotion-table-panel textarea { min-height: 72px; resize: vertical; }
+.competitor-kpi-grid { display: grid; grid-template-columns: repeat(7, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.competitor-kpi-grid article { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.competitor-filter-panel { display: grid; grid-template-columns: 180px minmax(240px, 1fr) 150px auto; align-items: end; gap: 10px; margin-bottom: 14px; }
+.competitor-filter-panel label { display: grid; gap: 5px; color: #555d68; font-size: 11px; font-weight: 800; }
+.competitor-filter-panel input, .competitor-filter-panel select { width: 100%; min-height: 38px; border: 1px solid #cbc7bf; border-radius: 7px; padding: 4px 8px; background: #fff; }
+.competitor-detail-table table { min-width: 1900px; }
+.competitor-own-row { background: var(--complete-bg); }
+.competitor-detail-table a { color: var(--brand); font-weight: 800; }
 .promotion-date-display { display: inline-block; min-width: 56px; white-space: nowrap; }
 .promotion-table-panel .daily-operations-table { width: 100%; min-width: 1000px; table-layout: fixed; }
 .daily-operations-table .daily-operation-date-column { width: 118px; }
@@ -684,6 +692,8 @@ h1 {
   .inbound-entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inbound-entry-grid button { width: 100%; }
   .promotion-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .competitor-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .competitor-filter-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .promotion-action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -709,6 +719,7 @@ h1 {
   .daily-plan-editor dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inbound-entry-grid { grid-template-columns: 1fr; }
   .promotion-kpi-grid, .promotion-action-grid { grid-template-columns: 1fr; }
+  .competitor-kpi-grid, .competitor-filter-panel { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -11,4 +11,20 @@ describe("competitor analytics", () => {
     expect(result.alerts.map((row) => row.type)).toEqual(expect.arrayContaining(["price-drop", "new-coupon", "bsr-improvement", "review-growth"]));
     expect(result.summary.tracked).toBe(1);
   });
+
+  test("compares competitors with the own-product baseline by effective price and size", () => {
+    const rows: CompetitorSnapshot[] = [
+      { ...base, id: "own", competitorAsin: "B0CFQ3TMBZ", size: "XL", price: 59.99, effectivePrice: 59.99, isOwnProduct: true },
+      { ...base, id: "rival-1", competitorAsin: "B077MBK8RM", size: "XL", price: 89.9, effectivePrice: 71.92, isOwnProduct: false },
+      { ...base, id: "rival-2", date: "2026-10-02", competitorAsin: "B077MBK8RM", size: "XL", price: 89.9, effectivePrice: 67.43, couponPercent: 25, isOwnProduct: false, subcategoryRank: 150 },
+    ];
+
+    const result = buildCompetitorAnalytics(rows, "2026-10-02");
+
+    expect(result.summary.tracked).toBe(1);
+    expect(result.summary.ownEffectivePrice).toBe(59.99);
+    expect(result.summary.lowestCompetitorPrice).toBe(67.43);
+    expect(result.summary.priceGap).toBeCloseTo(7.44);
+    expect(result.summary.promotionChanges).toBe(1);
+  });
 });
