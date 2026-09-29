@@ -115,7 +115,7 @@ export function TrendChart({ title, rows, series, eventMarkers = [] }: TrendChar
               tickFormatter={secondarySeries.axis === "percentage" ? percentTick : priceTick}
             />
           ) : null}
-          <Tooltip cursor={{ stroke: "#9f1d28", strokeDasharray: "3 3" }} />
+          <Tooltip cursor={{ stroke: "#2563a8", strokeDasharray: "3 3" }} />
           {eventMarkers.map((marker) => (
             <ReferenceLine
               key={`${marker.date}-${marker.label}`}

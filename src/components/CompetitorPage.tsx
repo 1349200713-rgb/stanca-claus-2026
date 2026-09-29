@@ -121,9 +121,9 @@ export function CompetitorPage({ repository = defaultRepository, onBack }: { rep
       <button type="button" className="secondary-button" onClick={() => { setDateFilter(""); setAsinFilter(""); setSizeFilter(""); }}>清除筛选</button>
     </section>
     <section className="trend-grid competitor-trend-grid" aria-label="竞品趋势图表">
-      <TrendChart title="页面售价 / 优惠后价格" rows={chartRows} series={[{ key: "price", label: "页面售价", color: "#526277", axis: "price" }, { key: "effectivePrice", label: "优惠后价格", color: "#9f1d28", axis: "price" }]} />
-      <TrendChart title="大类 / 小类排名" rows={chartRows} series={[{ key: "categoryRank", label: "大类排名", color: "#526277", axis: "value" }, { key: "subcategoryRank", label: "小类排名", color: "#9f1d28", axis: "value" }]} />
-      <TrendChart title="评分走势" rows={chartRows} series={[{ key: "rating", label: "评分", color: "#b1822f", axis: "value" }]} />
+      <TrendChart title="页面售价 / 优惠后价格" rows={chartRows} series={[{ key: "price", label: "页面售价", color: "#7aa7d6", axis: "price" }, { key: "effectivePrice", label: "优惠后价格", color: "#2563a8", axis: "price" }]} />
+      <TrendChart title="大类 / 小类排名" rows={chartRows} series={[{ key: "categoryRank", label: "大类排名", color: "#7aa7d6", axis: "value" }, { key: "subcategoryRank", label: "小类排名", color: "#2563a8", axis: "value" }]} />
+      <TrendChart title="评分走势" rows={chartRows} series={[{ key: "rating", label: "评分", color: "#c58a00", axis: "value" }]} />
     </section>
     <section className="panel promotion-table-panel"><div className="panel-heading"><div><p className="eyebrow">IMPORT & DETAIL</p><h2>竞品每日明细</h2></div><label className="secondary-button" htmlFor="competitor-file">上传竞品数据</label></div>
       <input id="competitor-file" className="sr-only" aria-label="上传竞品数据" type="file" accept=".csv,.xlsx,.xls" onChange={(event) => void upload(event.currentTarget.files?.[0])} />

@@ -86,15 +86,15 @@ export function PromotionReviewPage({ ads, business, overrides, operations, star
         </div> : null}
       </section>
       <section className="trend-grid" aria-label="推广复盘图表">
-        <TrendChart title="计划销量 vs 实际销量" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "actualUnits", label: "实际销量", color: "#9f1d28", axis: "value" }, { key: "targetUnits", label: "目标销量", color: "#526277", axis: "value" }]} />
-        <TrendChart title="计划广告 vs 实际广告" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "adSpend", label: "实际广告", color: "#9f1d28", axis: "currency" }, { key: "plannedAd", label: "计划广告", color: "#526277", axis: "currency" }]} />
-        <TrendChart title="目标ACOS vs 实际ACOS" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "acos", label: "实际ACOS", color: "#9f1d28", axis: "percentage" }, { key: "targetAcos", label: "目标ACOS", color: "#526277", axis: "percentage" }]} />
-        <TrendChart title="计划销售额 vs 实际销售额" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "actualSales", label: "实际销售额", color: "#9f1d28", axis: "currency" }, { key: "plannedSales", label: "计划销售额", color: "#526277", axis: "currency" }]} />
-        <TrendChart title="曝光量 / 点击量" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "impressions", label: "曝光量", color: "#526277", axis: "value" }, { key: "clicks", label: "点击量", color: "#9f1d28", axis: "value" }]} />
-        <TrendChart title="访问量 / 订单量" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "sessions", label: "访问量", color: "#526277", axis: "value" }, { key: "totalOrders", label: "订单量", color: "#9f1d28", axis: "value" }]} />
-        <TrendChart title="CTR / CVR" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "ctr", label: "CTR", color: "#526277", axis: "percentage" }, { key: "cvr", label: "CVR", color: "#9f1d28", axis: "percentage" }]} />
-        <TrendChart title="CPC / 广告花费" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "cpc", label: "CPC", color: "#b9822b", axis: "price" }, { key: "adSpend", label: "广告花费", color: "#9f1d28", axis: "currency" }]} />
-        <TrendChart title="ACOS / TACOS" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "acos", label: "ACOS", color: "#9f1d28", axis: "percentage" }, { key: "tacos", label: "TACOS", color: "#b9822b", axis: "percentage" }]} />
+        <TrendChart title="计划销量 vs 实际销量" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "actualUnits", label: "实际销量", color: "#2563a8", axis: "value" }, { key: "targetUnits", label: "目标销量", color: "#7aa7d6", axis: "value" }]} />
+        <TrendChart title="计划广告 vs 实际广告" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "adSpend", label: "实际广告", color: "#2563a8", axis: "currency" }, { key: "plannedAd", label: "计划广告", color: "#7aa7d6", axis: "currency" }]} />
+        <TrendChart title="目标ACOS vs 实际ACOS" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "acos", label: "实际ACOS", color: "#2563a8", axis: "percentage" }, { key: "targetAcos", label: "目标ACOS", color: "#7aa7d6", axis: "percentage" }]} />
+        <TrendChart title="计划销售额 vs 实际销售额" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "actualSales", label: "实际销售额", color: "#2563a8", axis: "currency" }, { key: "plannedSales", label: "计划销售额", color: "#7aa7d6", axis: "currency" }]} />
+        <TrendChart title="曝光量 / 点击量" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "impressions", label: "曝光量", color: "#7aa7d6", axis: "value" }, { key: "clicks", label: "点击量", color: "#2563a8", axis: "value" }]} />
+        <TrendChart title="访问量 / 订单量" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "sessions", label: "访问量", color: "#7aa7d6", axis: "value" }, { key: "totalOrders", label: "订单量", color: "#2563a8", axis: "value" }]} />
+        <TrendChart title="CTR / CVR" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "ctr", label: "CTR", color: "#7aa7d6", axis: "percentage" }, { key: "cvr", label: "CVR", color: "#2563a8", axis: "percentage" }]} />
+        <TrendChart title="CPC / 广告花费" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "cpc", label: "CPC", color: "#c58a00", axis: "price" }, { key: "adSpend", label: "广告花费", color: "#2563a8", axis: "currency" }]} />
+        <TrendChart title="ACOS / TACOS" rows={chartRows} eventMarkers={eventMarkers} series={[{ key: "acos", label: "ACOS", color: "#2563a8", axis: "percentage" }, { key: "tacos", label: "TACOS", color: "#c58a00", axis: "percentage" }]} />
       </section>
       <section className="panel promotion-table-panel" aria-labelledby="promotion-anomaly-heading">
         <div className="panel-heading"><div><p className="eyebrow">EXCEPTION REVIEW</p><h2 id="promotion-anomaly-heading">异常提醒清单</h2></div><span className="panel-meta">按天发现问题</span></div>

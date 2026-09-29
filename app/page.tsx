@@ -311,9 +311,9 @@ function DashboardContent() {
         <InventoryRisk rows={inventoryRows} aggregateSignals={risks.aggregateSignals} />
       </section>
       <section className="trend-grid" aria-label="经营趋势">
-        <TrendChart title="销售额 / 均价走势" rows={series.map((row) => ({ date: row.date.slice(5), sales: row.sales, price: row.averagePrice }))} series={[{ key: "sales", label: "销售额", color: "#9f1d28", axis: "currency" }, { key: "price", label: "均价", color: "#526277", axis: "price" }]} eventMarkers={events} />
-        <TrendChart title="毛利润 / 毛利率" rows={series.map((row) => ({ date: row.date.slice(5), profit: row.grossProfit, margin: row.grossMargin }))} series={[{ key: "profit", label: "毛利润", color: "#9f1d28", axis: "currency" }, { key: "margin", label: "毛利率", color: "#b1822f", axis: "percentage" }]} />
-        <TrendChart title="广告花费 / ACOS" rows={series.map((row) => ({ date: row.date.slice(5), spend: row.adSpend, acos: row.acos }))} series={[{ key: "spend", label: "广告花费", color: "#9f1d28", axis: "currency" }, { key: "acos", label: "ACOS", color: "#b1822f", axis: "percentage" }]} />
+        <TrendChart title="销售额 / 均价走势" rows={series.map((row) => ({ date: row.date.slice(5), sales: row.sales, price: row.averagePrice }))} series={[{ key: "sales", label: "销售额", color: "#2563a8", axis: "currency" }, { key: "price", label: "均价", color: "#7aa7d6", axis: "price" }]} eventMarkers={events} />
+        <TrendChart title="毛利润 / 毛利率" rows={series.map((row) => ({ date: row.date.slice(5), profit: row.grossProfit, margin: row.grossMargin }))} series={[{ key: "profit", label: "毛利润", color: "#2563a8", axis: "currency" }, { key: "margin", label: "毛利率", color: "#c58a00", axis: "percentage" }]} />
+        <TrendChart title="广告花费 / ACOS" rows={series.map((row) => ({ date: row.date.slice(5), spend: row.adSpend, acos: row.acos }))} series={[{ key: "spend", label: "广告花费", color: "#2563a8", axis: "currency" }, { key: "acos", label: "ACOS", color: "#c58a00", axis: "percentage" }]} />
       </section>
 
       <section className="panel manual-panel" aria-labelledby="manual-heading"><div className="panel-heading"><div><p className="eyebrow">MANUAL LOG</p><h2 id="manual-heading">手工记录</h2></div><span className="panel-meta">本机保存</span></div>
