@@ -152,6 +152,28 @@ h1 {
   background: rgba(255,255,255,.7);
 }
 
+.daily-size-panel { margin-bottom: 18px; }
+.daily-size-heading { flex-wrap: wrap; gap: 16px; }
+.daily-size-description { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.daily-size-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.daily-size-controls button:disabled { opacity: .55; cursor: default; }
+.daily-size-panel .daily-size-table { width: 100%; min-width: 520px; table-layout: fixed; font-variant-numeric: tabular-nums; }
+.daily-size-panel .daily-size-table th, .daily-size-panel .daily-size-table td { padding: 12px 14px; text-align: right; white-space: nowrap; font-size: 14px; }
+.daily-size-panel .daily-size-table th:first-child { width: 12%; text-align: left; }
+.daily-size-panel .daily-size-table thead th { color: var(--muted); background: #f7f6f3; font-size: 12px; }
+.daily-size-panel .daily-size-table tr[data-state="complete"] .daily-size-result { color: var(--complete); font-weight: 800; }
+.daily-size-panel .daily-size-table tr[data-state="risk"] .daily-size-result { color: var(--risk); font-weight: 800; }
+.daily-size-panel .daily-size-table tr[data-state="missing"], .daily-size-panel .daily-size-table tr[data-state="no-plan"] { color: var(--muted); }
+.daily-size-status { display: inline-block; border-radius: 5px; padding: 4px 8px; font-size: 12px; font-weight: 700; }
+.daily-size-status--complete { background: var(--complete-bg); color: var(--complete); }
+.daily-size-status--risk { background: var(--risk-bg); color: var(--risk); }
+.daily-size-status--missing, .daily-size-status--no-plan { background: #efefed; color: var(--muted); }
+.daily-size-total { border-top: 2px solid var(--line); background: #f7f6f3; font-weight: 800; }
+.daily-size-note { margin: 12px 0 4px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.daily-size-source { margin: 0; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.daily-size-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.daily-size-actions .secondary-button { font-size: 12px; padding: 7px 10px; }
+
 .dashboard-filters {
   display: flex;
   flex-wrap: wrap;

@@ -7,6 +7,7 @@ import { ImportPanel } from "../src/components/ImportPanel";
 import { InventoryRisk, type InventoryRiskRow } from "../src/components/InventoryRisk";
 import { KpiCard, type KpiCardProps } from "../src/components/KpiCard";
 import { PlanVsActualChart } from "../src/components/PlanVsActualChart";
+import { DailySizeComparison } from "../src/components/DailySizeComparison";
 import { TrendChart } from "../src/components/TrendChart";
 import { PlanInventoryPage } from "../src/components/PlanInventoryPage";
 import { PromotionPage } from "../src/components/PromotionPage";
@@ -19,7 +20,7 @@ import { OpsNavigation, type OpsPage } from "../src/components/OpsNavigation";
 import { statusForTarget } from "../src/calc/status";
 import { loadPlan } from "../src/data/plan";
 import type { AdRecord, BusinessRecord, ManualRecord, SizeCode } from "../src/domain/types";
-import type { ActivePlan, DailyOperationRecord, InboundEntry, InventorySnapshot, PromotionPlanOverride } from "../src/domain/planning";
+import type { ActivePlan, DailyOperationDraft, DailyOperationRecord, InboundEntry, InventorySnapshot, PromotionPlanOverride } from "../src/domain/planning";
 import { buildDashboardSeries, evaluateDashboardRisks, selectDashboardSnapshot, targetsForSize } from "../src/integration/dashboard";
 import { buildPlanInventorySummary } from "../src/integration/plan-inventory";
 import { opsDb, type ImportLog } from "../src/storage/db";
@@ -102,6 +103,7 @@ function DashboardContent() {
   const [inboundEntries, setInboundEntries] = useState<InboundEntry[]>([]);
   const [promotionOverrides, setPromotionOverrides] = useState<PromotionPlanOverride[]>([]);
   const [dailyOperations, setDailyOperations] = useState<DailyOperationRecord[]>([]);
+  const [operationDraft, setOperationDraft] = useState<DailyOperationDraft>();
   const [page, setPage] = useState<OpsPage>(() => {
     const value = queryValue("page", "dashboard") as OpsPage;
     return OPS_PAGES.includes(value) ? value : "dashboard";
@@ -254,7 +256,7 @@ function DashboardContent() {
     return <PromotionReviewPage ads={ads} business={business} overrides={promotionOverrides} operations={dailyOperations} startDate="2026-10-02" endDate="2026-12-20" onBack={() => { setPage("promotion"); void refresh(); }} />;
   }
   if (page === "daily-operations") {
-    return <DailyOperationsPage operations={dailyOperations} defaultDate={endDate} onBack={() => { setPage("promotion"); void refresh(); }} onChanged={refresh} />;
+    return <DailyOperationsPage operations={dailyOperations} defaultDate={endDate} draft={operationDraft} onBack={() => { setOperationDraft(undefined); setPage("promotion"); void refresh(); }} onChanged={refresh} />;
   }
   if (page === "competitors") {
     return <CompetitorPage onBack={() => setPage("dashboard")} />;
@@ -273,6 +275,7 @@ function DashboardContent() {
           <OpsNavigation current={page} onNavigate={setPage} />
         </div>
       </header>
+      <DailySizeComparison plan={plan} activePlan={activePlan} business={business} loaded={loaded} fallbackDate={endDate} onOpenPlan={() => setPage("plan-inventory")} onCreateOperation={(draft) => { setOperationDraft(draft); setPage("daily-operations"); }} />
       <section className="v2-dashboard-summary" aria-label="计划与库存摘要"><strong>计划与库存</strong><span>{activePlan ? `计划更新：${new Date(activePlan.updatedAt).toLocaleString("zh-CN")}` : "计划尚未初始化"}</span><span>{latestInventoryDate ? `库存快照：${latestInventoryDate}` : "尚无库存快照"}</span>{inventoryComplete ? null : <span>库存数据不足（缺少部分尺码或必填字段）</span>}<button type="button" onClick={() => setPage("plan-inventory")}>进入计划与库存</button></section>
       <DataMigrationPanel
         preview={previewLocalMigration}

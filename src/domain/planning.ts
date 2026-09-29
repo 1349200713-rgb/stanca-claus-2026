@@ -109,3 +109,13 @@ export interface DailyOperationRecord {
   effectStatus?: "待观察" | "有效" | "无明显变化" | "负向" | "数据不足";
   updatedAt: string;
 }
+
+export interface DailyOperationDraft {
+  date: string;
+  size?: SizeCode;
+  action: string;
+  risk: string;
+  tomorrowPlan: string;
+  category: DailyOperationRecord["category"];
+  priority: DailyOperationRecord["priority"];
+}

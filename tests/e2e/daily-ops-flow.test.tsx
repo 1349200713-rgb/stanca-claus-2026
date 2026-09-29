@@ -37,7 +37,7 @@ describe("Santa Ops daily operating flow", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("3000");
     expect(screen.getByRole("alert").textContent).toContain("3010");
     expect(screen.getByText(/请先导入业务报告和广告报告/)).toBeTruthy();
-    expect(screen.getAllByText("—")).toHaveLength(5);
+    expect(within(screen.getByRole("region", { name: "核心指标" })).getAllByText("—")).toHaveLength(5);
     expect(screen.queryByText("726")).toBeNull();
   });
 

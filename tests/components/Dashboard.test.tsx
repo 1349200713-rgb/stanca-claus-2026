@@ -13,6 +13,34 @@ afterEach(async () => {
 });
 
 describe("Santa Ops dashboard", () => {
+  test("shows the latest business day for all sizes on the home page and links to the saved daily plan", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    history.replaceState(null, "", "/?size=XL&endDate=2026-11-26");
+    await opsDb.insert("activePlan", [{
+      key: "active-plan", id: "plan-2026", totalUnits: 50, updatedAt: "2026-09-29T00:00:00Z",
+      rows: [
+        { date: "2026-10-02", size: "L", units: 10 },
+        { date: "2026-10-02", size: "XL", units: 20 },
+        { date: "2026-10-02", size: "2XL", units: 10 },
+        { date: "2026-10-02", size: "3XL", units: 10 },
+      ],
+    }]);
+    await opsDb.insert("business", [
+      { key: "business:2026-10-02:l", date: "2026-10-02", sku: "L", asin: "", size: "L", units: 12, sales: 600, refunds: 0 },
+      { key: "business:2026-10-02:xl", date: "2026-10-02", sku: "XL", asin: "", size: "XL", units: 15, sales: 750, refunds: 0 },
+    ]);
+    render(<Dashboard />);
+    const table = await screen.findByRole("table", { name: "每日尺码销量对比" });
+    expect((screen.getByLabelText("对比日期") as HTMLInputElement).value).toBe("2026-10-02");
+    expect(within(table).getAllByRole("rowheader").map((cell) => cell.textContent)).toEqual(["L", "XL", "2XL", "3XL", "合计"]);
+    expect(within(table).getByRole("row", { name: "L 10 12 +2 120% 已达标" })).toBeTruthy();
+    expect(within(table).getByRole("row", { name: "XL 20 15 -5 75% 未达标" })).toBeTruthy();
+    expect(within(table).getByRole("row", { name: "合计 50 数据不全 — — 数据不全" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "计划销量 vs 实际销量折线图" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "调整日计划" }));
+    expect(await screen.findByRole("heading", { name: "计划与库存" })).toBeTruthy();
+  });
+
   test("renders the approved sections and five KPI labels in order", () => {
     render(<Dashboard />);
 

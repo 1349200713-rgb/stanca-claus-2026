@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { DailyOperationRecord } from "../domain/planning";
+import type { DailyOperationDraft, DailyOperationRecord } from "../domain/planning";
 import { parseDailyOperationsFile } from "../import/daily-operations-parser";
 import { opsDb } from "../storage/db";
 
@@ -10,6 +10,7 @@ export interface DailyOperationsPageProps {
   defaultDate: string;
   onBack: () => void;
   onChanged: () => void | Promise<void>;
+  draft?: DailyOperationDraft;
 }
 
 function operationKey(date: string): string {
@@ -17,7 +18,7 @@ function operationKey(date: string): string {
   return `daily-op:${date}:${suffix}`;
 }
 
-export function DailyOperationsPage({ operations, defaultDate, onBack, onChanged }: DailyOperationsPageProps) {
+export function DailyOperationsPage({ operations, defaultDate, onBack, onChanged, draft }: DailyOperationsPageProps) {
   const [message, setMessage] = useState<string>();
   const sorted = [...operations].sort((a, b) => `${b.date} ${b.updatedAt}`.localeCompare(`${a.date} ${a.updatedAt}`));
 
@@ -84,16 +85,16 @@ export function DailyOperationsPage({ operations, defaultDate, onBack, onChanged
       <section className="panel manual-panel" aria-labelledby="daily-operation-form-heading">
         <div className="panel-heading"><div><p className="eyebrow">ACTION LOG</p><h2 id="daily-operation-form-heading">新增每日操作</h2></div><div><label className="secondary-button" htmlFor="daily-operations-file">导入每日操作</label><input className="sr-only" id="daily-operations-file" aria-label="导入每日操作" type="file" accept=".csv,.xlsx,.xls" onChange={(event) => void importFile(event)} /></div></div>
         <form className="manual-form" onSubmit={(event) => void save(event)}>
-          <label>日期<input name="date" aria-label="日期" type="date" defaultValue={defaultDate} required /></label>
-          <label>动作<input name="action" aria-label="动作" required /></label>
-          <label>风险<input name="risk" aria-label="风险" /></label>
-          <label>明日计划<input name="tomorrowPlan" aria-label="明日计划" /></label>
-          <label>分类<select name="category" aria-label="分类" defaultValue="其他">{["调价", "优惠券", "广告预算", "竞价", "否词", "关键词", "Listing", "站外推广", "测评", "库存", "其他"].map((value) => <option key={value}>{value}</option>)}</select></label>
-          <label>优先级<select name="priority" aria-label="优先级" defaultValue="中"><option>低</option><option>中</option><option>高</option></select></label>
+          <label>日期<input name="date" aria-label="日期" type="date" defaultValue={draft?.date ?? defaultDate} required /></label>
+          <label>动作<input name="action" aria-label="动作" defaultValue={draft?.action} required /></label>
+          <label>风险<input name="risk" aria-label="风险" defaultValue={draft?.risk} /></label>
+          <label>明日计划<input name="tomorrowPlan" aria-label="明日计划" defaultValue={draft?.tomorrowPlan} /></label>
+          <label>分类<select name="category" aria-label="分类" defaultValue={draft?.category ?? "其他"}>{["调价", "优惠券", "广告预算", "竞价", "否词", "关键词", "Listing", "站外推广", "测评", "库存", "其他"].map((value) => <option key={value}>{value}</option>)}</select></label>
+          <label>优先级<select name="priority" aria-label="优先级" defaultValue={draft?.priority ?? "中"}><option>低</option><option>中</option><option>高</option></select></label>
           <label>负责人<input name="owner" aria-label="负责人" /></label>
           <label>截止日期<input name="dueDate" aria-label="截止日期" type="date" /></label>
           <label>关联ASIN<input name="asin" aria-label="关联ASIN" /></label>
-          <label>关联SKU<input name="sku" aria-label="关联SKU" /></label>
+          <label>关联SKU<input name="sku" aria-label="关联SKU" defaultValue={draft?.size} /></label>
           <label>关联关键词<input name="keywordId" aria-label="关联关键词" /></label>
           <label>关联竞品ASIN<input name="competitorAsin" aria-label="关联竞品ASIN" /></label>
           <label>状态<select name="status" aria-label="状态" defaultValue="未完成"><option>未完成</option><option>已完成</option></select></label>

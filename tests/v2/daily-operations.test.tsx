@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import * as XLSX from "xlsx";
 import Dashboard from "../../app/page";
 import { parseDailyOperationsFile } from "../../src/import/daily-operations-parser";
+import { DailyOperationsPage } from "../../src/components/DailyOperationsPage";
 import { configureOpsDbForTests, opsDb, resetOpsDbForTests } from "../../src/storage/db";
 import { createMemoryIdbFactory } from "../storage/memory-idb";
 
@@ -20,6 +21,23 @@ afterEach(async () => {
 });
 
 describe("daily operations page", () => {
+  test("prefills a size-sales exception for review without saving it", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    render(<DailyOperationsPage operations={[]} defaultDate="2026-11-26" onBack={() => undefined} onChanged={() => undefined}
+      draft={{
+        date: "2026-10-02", size: "XL", category: "其他", priority: "高",
+        action: "排查 XL 码销量落后计划的原因", risk: "XL 码实际销量 15 件，较计划少 5 件（完成率 75%）",
+        tomorrowPlan: "核查广告、价格、库存与关键词排名后制定调整动作",
+      }} />);
+
+    expect((screen.getByLabelText("日期") as HTMLInputElement).value).toBe("2026-10-02");
+    expect((screen.getByLabelText("动作") as HTMLInputElement).value).toContain("XL 码销量落后计划");
+    expect((screen.getByLabelText("风险") as HTMLInputElement).value).toContain("少 5 件");
+    expect((screen.getByLabelText("明日计划") as HTMLInputElement).value).toContain("核查广告");
+    expect((screen.getByLabelText("关联SKU") as HTMLInputElement).value).toBe("XL");
+    expect(await opsDb.listDailyOperations()).toHaveLength(0);
+  });
+
   test("finds a lower header row and maps the user's workbook columns", () => {
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet([
