@@ -36,6 +36,7 @@ test("imports inventory, saves shipment inbound, and continues to show insuffici
   fireEvent.click(screen.getByRole("button", { name: "保存导入" }));
   await waitFor(async () => expect(await opsDb.listInventorySnapshots()).toHaveLength(1));
 
+  fireEvent.click(screen.getByRole("button", { name: /货件明细/ }));
   fireEvent.change(screen.getByLabelText("FBA单号"), { target: { value: "FBA-L" } });
   fireEvent.change(screen.getByLabelText("SKU"), { target: { value: "SKU-L" } });
   fireEvent.change(screen.getByLabelText("品名"), { target: { value: "L码 5JUN-RD 圣诞服9件套" } });

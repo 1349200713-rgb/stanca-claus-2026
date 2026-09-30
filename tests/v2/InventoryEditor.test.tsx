@@ -21,6 +21,10 @@ afterEach(async () => {
   await resetOpsDbForTests();
 });
 
+function openShipmentDetails(): void {
+  fireEvent.click(screen.getByRole("button", { name: /货件明细/ }));
+}
+
 test("renders four accessible size rows using each size's latest snapshot", () => {
   render(<InventoryEditor inventory={snapshots} inbound={inbound} updatedAt="2026-11-25T08:00:00.000Z" />);
   const snapshotTable = screen.getByRole("table", { name: "Inventory snapshot reference" });
@@ -33,9 +37,24 @@ test("renders four accessible size rows using each size's latest snapshot", () =
   expect(screen.queryByRole("button", { name: "Save L inbound" })).toBeNull();
 });
 
+test("keeps shipment details collapsed until the operator asks to manage them", () => {
+  render(<InventoryEditor inventory={snapshots} inbound={inbound} updatedAt="2026-11-25T08:00:00.000Z" locale="zh" />);
+
+  const toggle = screen.getByRole("button", { name: "货件明细（0 票，在途 0 件）" });
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByLabelText("FBA单号")).toBeNull();
+  expect(screen.queryByRole("table", { name: "发货明细" })).toBeNull();
+
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByLabelText("FBA单号")).toBeTruthy();
+  expect(screen.getByRole("table", { name: "发货明细" })).toBeTruthy();
+});
+
 test("rejects negative and fractional units and invalid ISO calendar dates", async () => {
   configureOpsDbForTests(createMemoryIdbFactory());
   render(<InventoryEditor inventory={snapshots} inbound={inbound} updatedAt="2026-11-25T08:00:00.000Z" locale="zh" />);
+  openShipmentDetails();
   const units = screen.getByLabelText("数量");
   const date = screen.getByLabelText("到货时间");
   const save = screen.getByRole("button", { name: "保存发货明细" });
@@ -60,6 +79,7 @@ test("rejects negative and fractional units and invalid ISO calendar dates", asy
 test("records FBA shipment lines and summarizes inbound units by SKU", async () => {
   configureOpsDbForTests(createMemoryIdbFactory());
   render(<InventoryEditor inventory={[]} inbound={[]} updatedAt="2026-09-10T08:00:00.000Z" locale="zh" />);
+  openShipmentDetails();
 
   fireEvent.change(screen.getByLabelText("FBA单号"), { target: { value: "FBA19MSY9TRD" } });
   fireEvent.change(screen.getByLabelText("单价"), { target: { value: "13.3/KG" } });
@@ -96,6 +116,7 @@ test("summarizes inbound quantities by arrival date and product name", () => {
   ];
 
   render(<InventoryEditor inventory={[]} inbound={shipmentLines} updatedAt="2026-09-10T08:00:00.000Z" locale="zh" />);
+  openShipmentDetails();
   const table = screen.getByRole("table", { name: "到货节奏汇总" });
 
   expect(within(table).getByRole("row", { name: /2026-09-03/ }).textContent).toContain("XL码 5JUN-RD 圣诞服9件套50");
@@ -109,6 +130,7 @@ test("loads arrival summary from the latest saved shipment data", async () => {
   await opsDb.saveInboundEntry({ size: "L", units: 30, expectedArrivalDate: "2026-09-03", updatedAt: "2026-09-01T00:00:00.000Z", fbaNumber: "FBA-LATEST-L", sku: "A022-XXX-09-0C100", productName: "L码 5JUN-RD 圣诞服9件套", shipDate: "2026-08-25" });
 
   render(<InventoryEditor inventory={[]} inbound={[]} updatedAt="2026-09-10T08:00:00.000Z" locale="zh" />);
+  openShipmentDetails();
 
   const table = screen.getByRole("table", { name: "到货节奏汇总" });
   await waitFor(() => expect(within(table).getByRole("row", { name: /2026-09-03/ }).textContent).toContain("XL码 5JUN-RD 圣诞服9件套50"));
@@ -125,6 +147,7 @@ test("removes shipment lines when received or deleted", async () => {
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
   render(<InventoryEditor inventory={[]} inbound={shipmentLines} updatedAt="2026-09-10T08:00:00.000Z" locale="zh" />);
+  openShipmentDetails();
   fireEvent.click(screen.getByRole("button", { name: "收到 FBA19MSY9TRD A022-XXX-09-0B500" }));
   await waitFor(() => expect(screen.queryByText("FBA19MSY9TRD")).toBeNull());
   expect(within(screen.getByRole("table", { name: "SKU在途汇总" })).queryByRole("row", { name: /A022-XXX-09-0B500/ })).toBeNull();

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { PlanInventoryPage } from "../../src/components/PlanInventoryPage";
 import { adaptLegacyWeeklyPlanRows } from "../../src/integration/legacy-plan-adapter";
@@ -59,6 +59,22 @@ describe("PlanInventoryPage", () => {
     expect(screen.getByRole("row", { name: /^XL 数据不足/ })).toBeTruthy();
     expect(screen.getByRole("row", { name: /^2XL 数据不足/ })).toBeTruthy();
     expect(screen.getByRole("row", { name: /^3XL 数据不足/ })).toBeTruthy();
+  });
+
+  test("shows each size's sellable, receiving/reserved, inbound and next-arrival figures together", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    await opsDb.replaceInventorySnapshots([
+      { key: "inventory:2026-10-01:L", date: "2026-10-01", size: "L", fbaAvailable: 18, reserved: 2, unfulfillable: 0, sourceImportKey: "seed" },
+      { key: "inventory:2026-10-01:XL", date: "2026-10-01", size: "XL", fbaAvailable: 30, reserved: 3, unfulfillable: 0, sourceImportKey: "seed" },
+    ]);
+    await opsDb.saveInboundEntry({ size: "L", units: 12, expectedArrivalDate: "2026-10-08", updatedAt: "2026-10-01T08:00:00.000Z", fbaNumber: "FBA-L", sku: "SKU-L", productName: "L码圣诞服" });
+
+    render(<PlanInventoryPage plan={plan} onBack={() => undefined} />);
+
+    const overview = await screen.findByRole("table", { name: "尺码库存总览" });
+    expect(within(overview).getByRole("row", { name: /L 18 2 12 32 2026-10-08/ })).toBeTruthy();
+    expect(within(overview).getByRole("row", { name: /XL 30 3/ })).toBeTruthy();
+    expect(within(overview).getByRole("row", { name: /2XL — — — — — 数据不完整/ })).toBeTruthy();
   });
 
   test("saves the inclusive 2900 boundary, blocks 2899, and retains the saved active plan after remount", async () => {

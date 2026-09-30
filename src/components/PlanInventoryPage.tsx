@@ -12,6 +12,7 @@ import { DailyPlanEditor } from "./DailyPlanEditor";
 import { ImportPanel } from "./ImportPanel";
 import { InventoryEditor } from "./InventoryEditor";
 import { InventoryRiskPanel } from "./InventoryRiskPanel";
+import { SizeInventoryOverview } from "./SizeInventoryOverview";
 
 export interface PlanInventoryPageProps {
   plan: PlanModel;
@@ -125,6 +126,7 @@ export function PlanInventoryPage({ plan, onBack, onPlanSaved }: PlanInventoryPa
         <article><span>尺码数量</span><strong>L {planSummary.sizeTotals.L} · XL {planSummary.sizeTotals.XL}</strong><em>2XL {planSummary.sizeTotals["2XL"]} · 3XL {planSummary.sizeTotals["3XL"]}</em></article>
         <article><span>最后更新</span><strong>{new Date(data.activePlan.updatedAt).toLocaleString("zh-CN")}</strong><em>{summary.latestInventoryDate ? `库存快照 ${summary.latestInventoryDate}` : "尚未导入库存"}</em></article>
       </section>
+      <SizeInventoryOverview summary={summary} />
       <section className="panel v2-editor-panel"><div className="panel-heading"><div><p className="eyebrow">DAILY PLAN</p><h2>日度计划</h2></div></div><DailyPlanEditor rows={data.activePlan.rows} onRowsChange={updateRows} onSave={(rows, reason) => void savePlan(rows, reason)} locale="zh" /></section>
       <section className="panel v2-import-panel"><div className="panel-heading"><div><p className="eyebrow">AMAZON INVENTORY</p><h2>导入库存报告</h2></div><span className="panel-meta">CSV / XLSX / XLS</span></div><ImportPanel plan={{ sizeBySku: plan.sizeBySku, sizeByAsin: plan.sizeByAsin }} onImported={refresh} /></section>
       <section className="panel v2-editor-panel"><InventoryEditor inventory={data.inventory} inbound={data.inbound} updatedAt={now()} onSaved={() => void refresh()} locale="zh" /></section>

@@ -668,6 +668,18 @@ h1 {
 .plan-summary-grid strong { font-size: 16px; }
 .plan-summary-grid .is-complete { color: var(--complete); font-weight: 800; }
 .plan-summary-grid .is-risk { color: var(--risk); font-weight: 800; }
+.size-inventory-overview { margin-bottom: 14px; }
+.size-inventory-overview .panel-heading { align-items: start; }
+.size-inventory-overview .panel-meta { max-width: 380px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; text-align: right; }
+.size-inventory-overview table { width: 100%; min-width: 790px; border-collapse: collapse; }
+.size-inventory-overview th, .size-inventory-overview td { padding: 11px 10px; border-bottom: 1px solid #dce8f3; text-align: left; font-size: 12px; vertical-align: middle; }
+.size-inventory-overview tbody tr:last-child th, .size-inventory-overview tbody tr:last-child td { border-bottom: 0; }
+.size-inventory-overview td strong { color: var(--brand); }
+.size-inventory-overview__row--risk { background: var(--risk-bg); }
+.size-inventory-overview__row--attention, .size-inventory-overview__row--insufficient { background: var(--attention-bg); }
+.shipment-details-toggle { width: 100%; margin: 10px 0 0; min-height: 42px; border: 1px solid #b9ccdf; border-radius: 8px; padding: 0 12px; background: #f4f9ff; color: var(--brand); font-weight: 800; text-align: left; cursor: pointer; }
+.shipment-details-toggle::after { content: "展开"; float: right; color: var(--muted); font-size: 12px; }
+.shipment-details-toggle[aria-expanded="true"]::after { content: "收起"; }
 .v2-editor-panel, .v2-import-panel, .inventory-risk-panel-v2 { margin-bottom: 14px; }
 .v2-editor-panel table, .inventory-risk-panel-v2 table { width: 100%; border-collapse: collapse; }
 .v2-editor-panel th, .v2-editor-panel td, .risk-table th, .risk-table td { padding: 9px; border-bottom: 1px solid #dce8f3; text-align: left; font-size: 12px; vertical-align: top; }
@@ -725,6 +737,8 @@ h1 {
   .chart-wrapper--large { min-height: auto; }
   .manual-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .plan-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .size-inventory-overview .panel-heading { gap: 8px; flex-direction: column; }
+  .size-inventory-overview .panel-meta { max-width: none; text-align: left; }
   .inbound-entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inbound-entry-grid button { width: 100%; }
   .promotion-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }

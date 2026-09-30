@@ -90,6 +90,7 @@ function summarizeByArrival(inbound: readonly InboundEntry[]): Array<{ arrivalDa
 
 export function InventoryEditor({ inventory, inbound, updatedAt, onSaved, locale = "en" }: InventoryEditorProps) {
   const [savedInbound, setSavedInbound] = useState<InboundEntry[]>(() => [...inbound]);
+  const [shipmentsExpanded, setShipmentsExpanded] = useState(false);
   const [shipmentDraft, setShipmentDraft] = useState<ShipmentDraft>(emptyShipmentDraft);
   const [savingShipment, setSavingShipment] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string }>();
@@ -97,6 +98,8 @@ export function InventoryEditor({ inventory, inbound, updatedAt, onSaved, locale
   const skuSummary = summarizeBySku(savedInbound);
   const skuSummaryTotal = skuSummary.reduce((total, row) => total + row.units, 0);
   const arrivalSummary = summarizeByArrival(savedInbound);
+  const shipmentLines = savedInbound.filter((entry) => entry.sku || entry.fbaNumber);
+  const inboundUnits = shipmentLines.reduce((total, entry) => total + (entry.units ?? 0), 0);
 
   const reloadSavedInbound = async () => {
     const latestInbound = await opsDb.getInboundEntries();
@@ -200,6 +203,15 @@ export function InventoryEditor({ inventory, inbound, updatedAt, onSaved, locale
   return (
     <section aria-labelledby="inventory-editor-heading">
       <h2 id="inventory-editor-heading">{zh ? "库存与在途" : "Inventory and inbound"}</h2>
+      <button
+        className="shipment-details-toggle"
+        type="button"
+        aria-expanded={shipmentsExpanded}
+        onClick={() => setShipmentsExpanded((current) => !current)}
+      >
+        {zh ? `货件明细（${shipmentLines.length} 票，在途 ${inboundUnits} 件）` : `Shipment details (${shipmentLines.length} lines, ${inboundUnits} inbound)`}
+      </button>
+      {shipmentsExpanded && <>
       <div className="inbound-entry-grid">
         <label>{zh ? "FBA单号" : "FBA number"}<input aria-label={zh ? "FBA单号" : "FBA number"} value={shipmentDraft.fbaNumber} onChange={(event) => updateShipment("fbaNumber", event.currentTarget.value)} /></label>
         <label>{zh ? "单价" : "Unit price"}<input aria-label={zh ? "单价" : "Unit price"} value={shipmentDraft.unitPrice} onChange={(event) => updateShipment("unitPrice", event.currentTarget.value)} placeholder="13.3/KG" /></label>
@@ -281,6 +293,7 @@ export function InventoryEditor({ inventory, inbound, updatedAt, onSaved, locale
           </tbody>
         </table>
       </div>
+      </>}
 
       <div className="table-scroll inventory-snapshot-table">
       <table aria-label={zh ? "库存快照参考" : "Inventory snapshot reference"}>
