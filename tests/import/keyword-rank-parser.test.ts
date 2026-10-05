@@ -9,8 +9,8 @@ test("normalizes ranked, unindexed, zero, and missing values", () => {
 });
 
 test("parses keyword rows with independent organic and ad ranks", () => {
-  const result = parseKeywordRankRows([{ 日期: "2026-10-02", 关键词: " Santa Costume ", ASIN: "b0cfpyyprn", 自然排名: "8", 广告排名: "未收录" }], "2026-10-02T00:00:00Z");
-  expect(result.records[0]).toMatchObject({ keywordId: "santa-costume", asin: "B0CFPYYPRN", organicRank: 8, organicStatus: "ranked", adRank: null, adStatus: "notIndexed" });
+  const result = parseKeywordRankRows([{ 日期: "2026-10-02", 关键词: " Santa Costume ", ASIN: "b0cfpyyprn", 自然排名: "8", ABA关键词搜索排名: "12", 广告排名: "未收录" }], "2026-10-02T00:00:00Z");
+  expect(result.records[0]).toMatchObject({ keywordId: "santa-costume", asin: "B0CFPYYPRN", organicRank: 8, organicStatus: "ranked", abaRank: 12, adRank: null, adStatus: "notIndexed" });
 });
 
 test("accepts Excel serial dates and rejects impossible calendar dates", () => {

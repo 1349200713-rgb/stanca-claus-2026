@@ -24,8 +24,8 @@ export function parseKeywordRankRows(rows: Record<string, unknown>[], updatedAt 
   rows.forEach((row, index) => {
     const dateKey = Object.keys(row).find((candidate) => ["日期", "date"].includes(candidate.trim().toLowerCase())); const date = isoDate(dateKey ? row[dateKey] : undefined); const keyword = pick(row, ["关键词", "keyword"]); const asin = pick(row, ["asin", "我方asin"]).toUpperCase();
     if (!date || !keyword || !/^B0[A-Z0-9]+$/.test(asin)) { issues.push(`第${index + 2}行：日期、关键词或ASIN无效`); return; }
-    const organic = parseRank(pick(row, ["自然排名", "organic rank"])); const ad = parseRank(pick(row, ["广告排名", "ad rank"])); const id = keywordId(keyword);
-    records.push({ id: `keyword:US:${date}:${asin}:${id}`, marketplace: "US", date, keywordId: id, keyword: keyword.trim(), asin, organicRank: organic.rank, organicStatus: organic.status, adRank: ad.rank, adStatus: ad.status, updatedAt });
+    const organic = parseRank(pick(row, ["自然排名", "organic rank"])); const aba = parseRank(pick(row, ["aba关键词搜索排名", "aba搜索排名", "aba rank", "aba search rank"])); const ad = parseRank(pick(row, ["广告排名", "ad rank"])); const id = keywordId(keyword);
+    records.push({ id: `keyword:US:${date}:${asin}:${id}`, marketplace: "US", date, keywordId: id, keyword: keyword.trim(), asin, organicRank: organic.rank, organicStatus: organic.status, abaRank: aba.rank, adRank: ad.rank, adStatus: ad.status, updatedAt });
   });
   return { records, issues };
 }
