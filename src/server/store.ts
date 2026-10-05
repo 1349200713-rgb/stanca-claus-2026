@@ -187,11 +187,18 @@ export function batchWrite(operations: WriteOperation[]): WriteResult {
       }
     }
     if (operation.deleteKeys !== undefined && (!Array.isArray(operation.deleteKeys) || operation.deleteKeys.some((key) => typeof key !== "string" || !key))) throw new Error("无效的删除列表");
+    if (operation.requireKeys !== undefined && (!Array.isArray(operation.requireKeys) || operation.requireKeys.some((key) => typeof key !== "string" || !key))) throw new Error("无效的前置记录列表");
   }
   const connection = db();
   const result = { written: 0, skipped: 0 };
   connection.exec("BEGIN IMMEDIATE");
   try {
+    for (const operation of operations) {
+      for (const key of operation.requireKeys ?? []) {
+        const exists = connection.prepare("SELECT 1 FROM records WHERE store = ? AND record_key = ?").get(operation.store, key);
+        if (!exists) throw new Error("待处理记录不存在或已处理");
+      }
+    }
     for (const operation of operations) {
       if (operation.clear) clearRecords(operation.store);
       for (const key of operation.deleteKeys ?? []) connection.prepare("DELETE FROM records WHERE store = ? AND record_key = ?").run(operation.store, key);

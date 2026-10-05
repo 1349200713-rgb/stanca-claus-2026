@@ -75,6 +75,28 @@ function inboundStorageKey(entry: InboundEntry): string {
   return `inbound:${shipmentKey}`;
 }
 
+function latestInventoryForSize(rows: readonly InventorySnapshot[], size: SizeCode): InventorySnapshot | undefined {
+  return rows.filter((row) => row.size === size).reduce<InventorySnapshot | undefined>((latest, row) => {
+    if (!latest || row.date > latest.date) return row;
+    if (row.date === latest.date && row.key === `inventory:manual:${size}`) return row;
+    return latest;
+  }, undefined);
+}
+
+function receivedInventorySnapshot(rows: readonly InventorySnapshot[], entry: InboundEntry, updatedAt: string): InventorySnapshot {
+  if (entry.units == null || !Number.isInteger(entry.units) || entry.units < 0) throw new Error("到货数量必须是非负整数");
+  const current = latestInventoryForSize(rows, entry.size);
+  return {
+    key: `inventory:manual:${entry.size}`,
+    date: updatedAt.slice(0, 10),
+    size: entry.size,
+    fbaAvailable: (current?.fbaAvailable ?? 0) + entry.units,
+    reserved: current?.reserved ?? 0,
+    unfulfillable: current?.unfulfillable ?? 0,
+    sourceImportKey: `receipt:${inboundStorageKey(entry)}`,
+  };
+}
+
 interface StoreRecordMap {
   business: BusinessRecord;
   ads: AdRecord;
@@ -271,6 +293,38 @@ export const opsDb = {
     const transaction = db.transaction("inbound", "readwrite");
     const done = transactionDone(transaction);
     await finishWrite([requestValue(transaction.objectStore("inbound").delete(inboundStorageKey(entry)))], done);
+  },
+
+  async receiveInboundEntry(entry: InboundEntry, updatedAt: string): Promise<void> {
+    const inboundKey = inboundStorageKey(entry);
+    if (usesServer()) {
+      const inventory = await opsDb.listInventorySnapshots();
+      const snapshot = receivedInventorySnapshot(inventory, entry, updatedAt);
+      await remoteBatch([
+        { store: "inventory", records: [snapshot], mode: "replace" },
+        { store: "inbound", deleteKeys: [inboundKey], requireKeys: [inboundKey] },
+      ]);
+      return;
+    }
+    const db = await openDatabase();
+    const transaction = db.transaction(["inventory", "inbound"], "readwrite");
+    const done = transactionDone(transaction);
+    const inboundStore = transaction.objectStore("inbound");
+    const inventoryStore = transaction.objectStore("inventory");
+    try {
+      const storedInbound = (await requestValue(inboundStore.getAll()) as StoredInboundEntry[]).find((row) => row.key === inboundKey);
+      if (!storedInbound) throw new Error("待处理货件不存在或已到货");
+      const inventory = await requestValue(inventoryStore.getAll()) as InventorySnapshot[];
+      const snapshot = receivedInventorySnapshot(inventory, entry, updatedAt);
+      await finishWrite([
+        requestValue(inventoryStore.put(snapshot)),
+        requestValue(inboundStore.delete(inboundKey)),
+      ], done);
+    } catch (error) {
+      transaction.abort();
+      await done.catch(() => undefined);
+      throw error;
+    }
   },
 
   listPromotionPlanOverrides(): Promise<PromotionPlanOverride[]> {

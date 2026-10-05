@@ -51,6 +51,34 @@ test("keeps shipment details collapsed until the operator asks to manage them", 
   expect(screen.getByRole("table", { name: "发货明细" })).toBeTruthy();
 });
 
+test("saves manually entered inventory for every size", async () => {
+  configureOpsDbForTests(createMemoryIdbFactory());
+  render(<InventoryEditor inventory={snapshots} inbound={[]} updatedAt="2026-11-25T08:00:00.000Z" locale="zh" />);
+
+  fireEvent.change(screen.getByLabelText("L FBA 可售"), { target: { value: "25" } });
+  fireEvent.change(screen.getByLabelText("L 预留"), { target: { value: "3" } });
+  fireEvent.change(screen.getByLabelText("L 不可售"), { target: { value: "1" } });
+  fireEvent.change(screen.getByLabelText("XL FBA 可售"), { target: { value: "16" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存库存" }));
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("库存已保存"));
+  expect(await opsDb.listInventorySnapshots()).toEqual(expect.arrayContaining([
+    expect.objectContaining({ key: "inventory:manual:L", date: "2026-11-25", size: "L", fbaAvailable: 25, reserved: 3, unfulfillable: 1 }),
+    expect.objectContaining({ key: "inventory:manual:XL", date: "2026-11-25", size: "XL", fbaAvailable: 16, reserved: 1, unfulfillable: 0 }),
+  ]));
+});
+
+test("rejects invalid manually entered inventory without saving partial rows", async () => {
+  configureOpsDbForTests(createMemoryIdbFactory());
+  render(<InventoryEditor inventory={[]} inbound={[]} updatedAt="2026-11-25T08:00:00.000Z" locale="zh" />);
+
+  fireEvent.change(screen.getByLabelText("2XL FBA 可售"), { target: { value: "1.5" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存库存" }));
+
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("库存数量必须是非负整数"));
+  expect(await opsDb.listInventorySnapshots()).toEqual([]);
+});
+
 test("rejects negative and fractional units and invalid ISO calendar dates", async () => {
   configureOpsDbForTests(createMemoryIdbFactory());
   render(<InventoryEditor inventory={snapshots} inbound={inbound} updatedAt="2026-11-25T08:00:00.000Z" locale="zh" />);
@@ -137,7 +165,7 @@ test("loads arrival summary from the latest saved shipment data", async () => {
   expect(within(table).getByRole("row", { name: /2026-09-03/ }).textContent).toContain("L码 5JUN-RD 圣诞服9件套30");
 });
 
-test("removes shipment lines when received or deleted", async () => {
+test("moves a received shipment into FBA available while deletion only removes inbound", async () => {
   configureOpsDbForTests(createMemoryIdbFactory());
   const shipmentLines: InboundEntry[] = [
     { size: "XL", units: 15, expectedArrivalDate: "2026-10-05", updatedAt: "2026-09-10T00:00:00.000Z", fbaNumber: "FBA19MSY9TRD", sku: "A022-XXX-09-0B500", productName: "XL码 5JUN-RD 圣诞服9件套", shipDate: "2026-09-10" },
@@ -152,6 +180,9 @@ test("removes shipment lines when received or deleted", async () => {
   await waitFor(() => expect(screen.queryByText("FBA19MSY9TRD")).toBeNull());
   expect(within(screen.getByRole("table", { name: "SKU在途汇总" })).queryByRole("row", { name: /A022-XXX-09-0B500/ })).toBeNull();
   expect(within(screen.getByRole("table", { name: "到货节奏汇总" })).queryByText("XL码 5JUN-RD 圣诞服9件套")).toBeNull();
+  expect(await opsDb.listInventorySnapshots()).toEqual(expect.arrayContaining([
+    expect.objectContaining({ key: "inventory:manual:XL", size: "XL", fbaAvailable: 15, reserved: 0, unfulfillable: 0 }),
+  ]));
 
   fireEvent.click(screen.getByRole("button", { name: "删除 FBA19DEL A022-XXX-09-0C100" }));
   await waitFor(() => expect(screen.queryByText("FBA19DEL")).toBeNull());

@@ -7,6 +7,7 @@ export interface WriteOperation {
   mode?: WriteMode;
   clear?: boolean;
   deleteKeys?: string[];
+  requireKeys?: string[];
 }
 export interface WriteResult { written: number; skipped: number }
 

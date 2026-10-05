@@ -75,6 +75,22 @@ describe("shared storage across separate sessions", () => {
     expect(await readFromSecondComputer("inbound")).toEqual([]);
   });
 
+  test("receiving inbound atomically increases FBA available exactly once", async () => {
+    const shipment = { ...inbound, fbaNumber: "FBA-RECEIPT", sku: "SKU-L" };
+    await client.opsDb.saveInboundEntry(shipment);
+
+    await client.opsDb.receiveInboundEntry(shipment, updatedAt);
+    expect(await readFromSecondComputer("inbound")).toEqual([]);
+    expect(await readFromSecondComputer("inventory")).toEqual([
+      expect.objectContaining({ key: "inventory:manual:L", size: "L", fbaAvailable: 10, reserved: 0, unfulfillable: 0 }),
+    ]);
+
+    await expect(client.opsDb.receiveInboundEntry(shipment, updatedAt)).rejects.toThrow();
+    expect(await readFromSecondComputer("inventory")).toEqual([
+      expect.objectContaining({ fbaAvailable: 10 }),
+    ]);
+  });
+
   test("inventory and promotion plan edits are shared", async () => {
     const inventory = { key: "inventory:one", date, size: "L" as const, fbaAvailable: 20, reserved: 0, unfulfillable: 0, sourceImportKey: "one" };
     const promotion = { key: "promotion:one", date, note: "Updated", updatedAt };

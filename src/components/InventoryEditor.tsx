@@ -22,7 +22,7 @@ export interface InventoryEditorProps {
   inventory: readonly InventorySnapshot[];
   inbound: readonly InboundEntry[];
   updatedAt: string;
-  onSaved?: (entry: InboundEntry) => void | Promise<void>;
+  onSaved?: () => void | Promise<void>;
   locale?: "en" | "zh";
 }
 
@@ -36,9 +36,22 @@ function isIsoDate(value: string): boolean {
 
 function latestBySize(inventory: readonly InventorySnapshot[], size: SizeCode): InventorySnapshot | undefined {
   return inventory.filter((snapshot) => snapshot.size === size).reduce<InventorySnapshot | undefined>(
-    (latest, snapshot) => (!latest || snapshot.date > latest.date ? snapshot : latest),
+    (latest, snapshot) => (!latest || snapshot.date > latest.date || (snapshot.date === latest.date && snapshot.key === `inventory:manual:${size}`) ? snapshot : latest),
     undefined,
   );
+}
+
+type InventoryDraft = Record<SizeCode, { fbaAvailable: string; reserved: string; unfulfillable: string }>;
+
+function inventoryDraft(inventory: readonly InventorySnapshot[]): InventoryDraft {
+  return Object.fromEntries(sizes.map((size) => {
+    const snapshot = latestBySize(inventory, size);
+    return [size, {
+      fbaAvailable: String(snapshot?.fbaAvailable ?? 0),
+      reserved: String(snapshot?.reserved ?? 0),
+      unfulfillable: String(snapshot?.unfulfillable ?? 0),
+    }];
+  })) as InventoryDraft;
 }
 
 function emptyShipmentDraft(): ShipmentDraft {
@@ -93,6 +106,8 @@ export function InventoryEditor({ inventory, inbound, updatedAt, onSaved, locale
   const [shipmentsExpanded, setShipmentsExpanded] = useState(false);
   const [shipmentDraft, setShipmentDraft] = useState<ShipmentDraft>(emptyShipmentDraft);
   const [savingShipment, setSavingShipment] = useState(false);
+  const [savingInventory, setSavingInventory] = useState(false);
+  const [inventoryValues, setInventoryValues] = useState<InventoryDraft>(() => inventoryDraft(inventory));
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string }>();
   const zh = locale === "zh";
   const skuSummary = summarizeBySku(savedInbound);
@@ -109,12 +124,48 @@ export function InventoryEditor({ inventory, inbound, updatedAt, onSaved, locale
 
   useEffect(() => {
     let live = true;
+    // Mirror refreshed shared data before the asynchronous server read completes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSavedInbound([...inbound]);
     void opsDb.getInboundEntries()
       .then((latestInbound) => { if (live) setSavedInbound(latestInbound); })
       .catch(() => undefined);
     return () => { live = false; };
   }, [inbound]);
+
+  useEffect(() => {
+    // Imported or received inventory can change outside this editor.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setInventoryValues(inventoryDraft(inventory));
+  }, [inventory]);
+
+  const saveInventory = async () => {
+    setSavingInventory(true);
+    setMessage(undefined);
+    try {
+      const rows = sizes.map((size) => {
+        const values = inventoryValues[size];
+        const parsed = [values.fbaAvailable, values.reserved, values.unfulfillable].map(Number);
+        if (parsed.some((value) => !Number.isInteger(value) || value < 0)) throw new Error(zh ? "库存数量必须是非负整数" : "Inventory quantities must be nonnegative whole numbers");
+        return {
+          key: `inventory:manual:${size}`,
+          date: updatedAt.slice(0, 10),
+          size,
+          fbaAvailable: parsed[0],
+          reserved: parsed[1],
+          unfulfillable: parsed[2],
+          sourceImportKey: "manual-entry",
+        } satisfies InventorySnapshot;
+      });
+      await opsDb.replaceInventorySnapshots(rows);
+      await onSaved?.();
+      setMessage({ kind: "success", text: zh ? "库存已保存" : "Inventory saved" });
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : zh ? "库存保存失败" : "Unable to save inventory" });
+    } finally {
+      setSavingInventory(false);
+    }
+  };
 
   const updateShipment = (field: keyof ShipmentDraft, value: string) => {
     setShipmentDraft((current) => ({ ...current, [field]: value }));
@@ -160,7 +211,7 @@ export function InventoryEditor({ inventory, inbound, updatedAt, onSaved, locale
     try {
       await opsDb.saveInboundEntry(entry);
       await reloadSavedInbound();
-      await onSaved?.(structuredClone(entry));
+      await onSaved?.();
       setShipmentDraft((current) => ({
         ...emptyShipmentDraft(),
         unitPrice: current.unitPrice,
@@ -183,15 +234,16 @@ export function InventoryEditor({ inventory, inbound, updatedAt, onSaved, locale
   const removeShipment = async (entry: InboundEntry, action: "received" | "deleted") => {
     const label = shipmentLabel(entry);
     const confirmText = action === "received"
-      ? (zh ? `确认收到 ${label}？收到后将从在途中移除。` : `Mark ${label} as received? It will be removed from inbound.`)
+      ? (zh ? `确认收到 ${label}？数量将从在途中移除并计入 FBA 可售。` : `Mark ${label} as received? Units will move from inbound to FBA available.`)
       : (zh ? `确认删除 ${label}？删除后将从在途中移除。` : `Delete ${label}? It will be removed from inbound.`);
     if (!globalThis.confirm?.(confirmText)) return;
     setSavingShipment(true);
     setMessage(undefined);
     try {
-      await opsDb.deleteInboundEntry(entry);
+      if (action === "received") await opsDb.receiveInboundEntry(entry, updatedAt);
+      else await opsDb.deleteInboundEntry(entry);
       await reloadSavedInbound();
-      await onSaved?.(structuredClone(entry));
+      await onSaved?.();
       setMessage({ kind: "success", text: action === "received" ? (zh ? "货件已标记收到" : "Shipment marked received") : (zh ? "货件已删除" : "Shipment deleted") });
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof Error ? error.message : zh ? "货件操作失败" : "Shipment update failed" });
@@ -313,15 +365,16 @@ export function InventoryEditor({ inventory, inbound, updatedAt, onSaved, locale
               <tr key={size}>
                 <th scope="row">{size}</th>
                 <td>{snapshot?.date ?? "—"}</td>
-                <td>{snapshot?.fbaAvailable ?? "—"}</td>
-                <td>{snapshot?.reserved ?? "—"}</td>
-                <td>{snapshot?.unfulfillable ?? "—"}</td>
+                <td><input aria-label={`${size} ${zh ? "FBA 可售" : "FBA available"}`} type="number" min="0" step="1" value={inventoryValues[size].fbaAvailable} onChange={(event) => setInventoryValues((current) => ({ ...current, [size]: { ...current[size], fbaAvailable: event.target.value } }))} /></td>
+                <td><input aria-label={`${size} ${zh ? "预留" : "Reserved"}`} type="number" min="0" step="1" value={inventoryValues[size].reserved} onChange={(event) => setInventoryValues((current) => ({ ...current, [size]: { ...current[size], reserved: event.target.value } }))} /></td>
+                <td><input aria-label={`${size} ${zh ? "不可售" : "Unfulfillable"}`} type="number" min="0" step="1" value={inventoryValues[size].unfulfillable} onChange={(event) => setInventoryValues((current) => ({ ...current, [size]: { ...current[size], unfulfillable: event.target.value } }))} /></td>
               </tr>
             );
           })}
         </tbody>
       </table>
       </div>
+      <button type="button" className="primary-button inventory-save-button" disabled={savingInventory} onClick={() => void saveInventory()}>{savingInventory ? (zh ? "保存中…" : "Saving…") : (zh ? "保存库存" : "Save inventory")}</button>
       {message && <p role={message.kind === "error" ? "alert" : "status"}>{message.text}</p>}
     </section>
   );
