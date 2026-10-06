@@ -1,5 +1,6 @@
 import type { OpsFilter, OpsResource, ServerImportBatch, UpsertResult } from "../../db/ops-repository";
 import type { ClientOpsRepository } from "./ops-repository";
+import { requestOperationAuthorization } from "./operation-authorization";
 
 interface HttpOpsOptions {
   fetch?: typeof globalThis.fetch;
@@ -30,14 +31,14 @@ export function createHttpOpsRepository(options: HttpOpsOptions = {}): ClientOps
   };
   const unlockAndRetry = async <T>(operation: () => Promise<T>): Promise<T> => operation().catch(async (error: Error & { status?: number }) => {
     if (error.status !== 428 || typeof window === "undefined") throw error;
-    const password = window.prompt("请输入操作密码");
-    if (!password) throw new Error("取消操作");
-    const unlock = await request(new Request(endpoint("../auth/operation"), {
-      method: "POST",
-      headers: headers(true),
-      body: JSON.stringify({ password }),
-    }));
-    await payloadOrError(unlock);
+    await requestOperationAuthorization(async (password) => {
+      const unlock = await request(new Request(endpoint("../auth/operation"), {
+        method: "POST",
+        headers: headers(true),
+        body: JSON.stringify({ password }),
+      }));
+      await payloadOrError(unlock);
+    });
     return operation();
   });
   return {
@@ -49,8 +50,9 @@ export function createHttpOpsRepository(options: HttpOpsOptions = {}): ClientOps
       return (await payloadOrError<{ records: T[] }>(response)).records;
     },
     async upsertBatch(resource: OpsResource, records: readonly Record<string, unknown>[], importBatch: ServerImportBatch): Promise<UpsertResult> {
+      const body = JSON.stringify({ records, importBatch });
       return unlockAndRetry(async () => {
-        const response = await request(new Request(endpoint(resource), { method: "POST", headers: headers(true), body: JSON.stringify({ records, importBatch }) }));
+        const response = await request(new Request(endpoint(resource), { method: "POST", headers: headers(true), body }));
         return payloadOrError<UpsertResult>(response);
       });
     },

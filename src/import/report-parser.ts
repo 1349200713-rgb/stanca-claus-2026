@@ -5,6 +5,12 @@ export type ReportKind = "business" | "ads";
 type Row = Record<string, unknown>;
 export type RawReportRow = Record<string, string>;
 
+export interface ReportParseOptions {
+  reportKind?: ReportKind;
+  /** Explicit user-supplied date for a single-day campaign export with no date column. */
+  fallbackAdDate?: string;
+}
+
 export interface SkuMap {
   sizeBySku: Record<string, SizeCode>;
   sizeByAsin: Record<string, SizeCode>;
@@ -27,9 +33,9 @@ export interface ParseResult {
 }
 
 const aliases = {
-  date: ["date", "日期"],
-  sku: ["sku", "seller sku", "卖家SKU"],
-  asin: ["asin"],
+  date: ["date", "日期", "时间", "report date", "报表日期"],
+  sku: ["sku", "seller sku", "卖家SKU", "advertised sku", "推广的sku", "广告sku"],
+  asin: ["asin", "advertised asin", "推广的asin", "广告asin"],
   units: ["units", "销量", "已订购商品数量"],
   sales: ["sales", "销售额", "已订购商品销售额"],
   sessions: ["sessions", "访问量", "会话数"],
@@ -40,15 +46,19 @@ const aliases = {
   fbaAvailable: ["fba available", "available inventory", "可售库存"],
   reserved: ["reserved", "预留库存"],
   unfulfillable: ["unfulfillable", "不可售库存"],
-  campaign: ["campaign", "广告活动名称"],
-  spend: ["spend", "花费"],
-  adSales: ["ad sales", "广告销售额"],
-  adOrders: ["ad orders", "广告订单"],
-  clicks: ["clicks", "点击"],
-  impressions: ["impressions", "展示"],
+  campaign: ["campaign", "campaign name", "广告活动名称", "广告活动"],
+  spend: ["spend", "cost", "total cost", "花费", "总成本", "成本", "广告花费"],
+  adSales: ["ad sales", "sales", "广告销售额", "销售额", "7 day total sales", "14 day total sales", "7天总销售额", "14天总销售额"],
+  adOrders: ["ad orders", "purchases", "orders", "广告订单", "订单", "购买量", "订单数", "7 day total orders (#)", "14 day total orders (#)", "7 day total orders", "14 day total orders", "7天总订单数", "14天总订单数"],
+  clicks: ["clicks", "点击", "点击量"],
+  impressions: ["impressions", "展示", "展示量"],
   cpc: ["cpc", "cost per click", "cost-per-click (cpc)", "单次点击成本", "每次点击费用"],
   ctr: ["ctr", "click through rate", "click-through rate", "click-thru rate (ctr)", "点击率"],
   cvr: ["cvr", "conversion rate", "7 day conversion rate", "转化率"],
+  acos: ["acos", "total advertising cost of sales (acos)", "广告投入产出比"],
+  roas: ["roas", "total return on advertising spend (roas)", "广告投资回报率"],
+  topOfSearchImpressionShare: ["top of search impression share", "top of search impression share (is)", "搜索结果首页首位展示量份额", "搜索结果首页首位展示份额"],
+  adjusted: ["是否调整", "adjusted"],
 } as const;
 
 function canonical(value: string): string {
@@ -60,7 +70,8 @@ function stringValue(value: unknown): string {
 }
 
 function columnFor(row: Row, field: keyof typeof aliases): string | undefined {
-  return Object.keys(row).find((header) => aliases[field].some((alias) => canonical(header) === canonical(alias)));
+  const headerName = (header: string) => canonical(header.replace(/^\uFEFF/, "").replace(/[（]/g, "(").replace(/[）]/g, ")").replace(/\((?:USD|US\$|\$)\)/gi, "").replace(/[‐‑–-]/g, " "));
+  return Object.keys(row).find((header) => aliases[field].some((alias) => headerName(header) === headerName(alias)));
 }
 
 function read(row: Row, field: keyof typeof aliases): string {
@@ -69,7 +80,7 @@ function read(row: Row, field: keyof typeof aliases): string {
 }
 
 function numberValue(value: string): number | undefined {
-  const cleaned = value.trim().replace(/[,$￥¥%\s]/g, "");
+  const cleaned = value.trim().replace(/US\$|USD|[,$￥¥%\s]/gi, "");
   if (!cleaned) return undefined;
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : undefined;
@@ -129,21 +140,23 @@ export function detectReportKind(rows: readonly Row[], filename: string): Report
   const headers = rows[0] ?? {};
   if (hasSignature(headers, "ads")) return "ads";
   if (hasSignature(headers, "business")) return "business";
+  if (columnFor(headers, "campaign") && ["spend", "impressions", "clicks", "adSales", "adOrders"].some((field) => columnFor(headers, field as keyof typeof aliases))) return "ads";
   return reportKindFromFilename(filename);
 }
 
-export function parseRows(rows: Row[], kind: ReportKind, skuMap: SkuMap): ParseResult {
+export function parseRows(rows: Row[], kind: ReportKind, skuMap: SkuMap, options: ReportParseOptions = {}): ParseResult {
   const issues: ParseIssue[] = [];
   const sourceRows = rawRows(rows);
   const headers = rows[0] ?? {};
-  const missing = requiredFields(kind).filter((field) => !columnFor(headers, field));
+  const fallbackDate = kind === "ads" ? dateValue(options.fallbackAdDate ?? "") : undefined;
+  const missing = requiredFields(kind).filter((field) => !columnFor(headers, field) && !(field === "date" && fallbackDate));
   if (kind === "business" && !columnFor(headers, "sku") && !columnFor(headers, "asin")) missing.push("sku");
   if (missing.length) {
     return {
       fatal: true,
       reportKind: kind,
       records: [],
-      issues: missing.map((field) => ({ code: "MISSING_REQUIRED_COLUMN", field, message: `Missing required column: ${field}` })),
+      issues: missing.map((field) => ({ code: "MISSING_REQUIRED_COLUMN", field, message: `${kind === "ads" && field === "date" ? "请填写单日广告报表日期，或上传含日期的按日报表。" : `缺少必填列：${({ date: "日期", units: "销量", sales: "销售额", sku: "SKU或ASIN", campaign: "广告活动名称", spend: "总成本/花费", adSales: "广告销售额", adOrders: "购买量/广告订单" } as Record<string, string>)[field] ?? field}。`} (Missing required column: ${field})` })),
       rawRows: sourceRows,
     };
   }
@@ -151,7 +164,7 @@ export function parseRows(rows: Row[], kind: ReportKind, skuMap: SkuMap): ParseR
   const records: Array<BusinessRecord | AdRecord> = [];
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
-    const date = dateValue(read(row, "date"));
+    const date = columnFor(headers, "date") ? dateValue(read(row, "date")) : fallbackDate;
     if (!date) issues.push({ code: "MISSING_REQUIRED_VALUE", field: "date", row: rowNumber, message: "Missing or invalid date" });
 
     if (kind === "business") {
@@ -200,6 +213,11 @@ export function parseRows(rows: Row[], kind: ReportKind, skuMap: SkuMap): ParseR
     const cpc = numberValue(read(row, "cpc"));
     const ctr = percentageValue(read(row, "ctr"));
     const cvr = percentageValue(read(row, "cvr"));
+    const acos = percentageValue(read(row, "acos"));
+    const roas = numberValue(read(row, "roas"));
+    const topOfSearchImpressionShare = percentageValue(read(row, "topOfSearchImpressionShare"));
+    const adjustedText = read(row, "adjusted");
+    const adjusted = /^(是|已调整|yes|true|1)$/i.test(adjustedText) ? true : /^(否|未调整|no|false|0)$/i.test(adjustedText) ? false : undefined;
     for (const [field, value] of [["campaign", campaign], ["spend", spend], ["adSales", adSales], ["adOrders", adOrders]] as const) {
       if (value === "" || value === undefined) issues.push({ code: "MISSING_REQUIRED_VALUE", field, row: rowNumber, message: `Missing or invalid ${field}` });
     }
@@ -213,20 +231,24 @@ export function parseRows(rows: Row[], kind: ReportKind, skuMap: SkuMap): ParseR
       ...(cpc === undefined ? {} : { cpc }),
       ...(ctr === undefined ? {} : { ctr }),
       ...(cvr === undefined ? {} : { cvr }),
+      ...(acos === undefined ? {} : { acos }),
+      ...(roas === undefined ? {} : { roas }),
+      ...(topOfSearchImpressionShare === undefined ? {} : { topOfSearchImpressionShare }),
+      ...(adjusted === undefined ? {} : { adjusted }),
     });
   });
 
   return { fatal: false, reportKind: kind, records, issues, rawRows: sourceRows };
 }
 
-export function parseReport(input: ArrayBuffer, filename: string, skuMap: SkuMap): ParseResult {
+export function parseReport(input: ArrayBuffer, filename: string, skuMap: SkuMap, options: ReportParseOptions = {}): ParseResult {
   const extension = filename.split(".").pop()?.toLowerCase();
   if (extension !== "csv" && extension !== "xlsx" && extension !== "xls") {
     return { fatal: true, reportKind: reportKindFromFilename(filename), records: [], issues: [{ code: "UNSUPPORTED_FILE", message: `Unsupported report file: ${filename}` }], rawRows: [] };
   }
-  const workbook = XLSX.read(input, { type: "array", cellDates: false });
+  const workbook = XLSX.read(input, { type: "array", cellDates: false, ...(extension === "csv" ? { codepage: 65001 } : {}) });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<Row>(sheet, { defval: "", raw: false });
-  const kind = detectReportKind(rows, filename);
-  return parseRows(rows, kind, skuMap);
+  const kind = options.reportKind ?? detectReportKind(rows, filename);
+  return parseRows(rows, kind, skuMap, options);
 }

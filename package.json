@@ -10,6 +10,7 @@
     "dev": "set \"PATH=C:\\Users\\sales07\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;%PATH%\" && set \"WRANGLER_LOG_PATH=.wrangler/wrangler.log\" && vinext dev",
     "build": "set \"PATH=C:\\Users\\sales07\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;%PATH%\" && set \"WRANGLER_LOG_PATH=.wrangler/wrangler.log\" && vinext build",
     "start": "set \"PATH=C:\\Users\\sales07\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;%PATH%\" && set \"WRANGLER_LOG_PATH=.wrangler/wrangler.log\" && vinext start",
+    "preview:local": "set \"PATH=C:\\Users\\sales07\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;%PATH%\" && set \"WRANGLER_LOG_PATH=.wrangler/wrangler.log\" && set \"SANTA_OPS_DATA_DIR=.wrangler/manual-entry-preview\" && set \"SANTA_OPS_DB_PATH=.wrangler/manual-entry-preview/santa-ops.sqlite\" && set \"SANTA_OPS_LOCAL_PASSWORDLESS_ORIGIN=http://127.0.0.1:3011\" && vinext start --hostname 127.0.0.1 --port 3011",
     "test": "pnpm build && set \"PATH=C:\\Users\\sales07\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;%PATH%\" && node --test tests/rendered-html.test.mjs",
     "vitest": "set \"PATH=C:\\Users\\sales07\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;%PATH%\" && vitest",
     "typecheck": "set \"PATH=C:\\Users\\sales07\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;%PATH%\" && tsc --noEmit",

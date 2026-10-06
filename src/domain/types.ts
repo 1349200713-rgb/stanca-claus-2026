@@ -24,6 +24,11 @@ export interface BusinessRecord {
   size: SizeCode;
   units: number;
   sales: number;
+  sellingPrice?: number;
+  discountMethod?: string;
+  discountDetails?: string;
+  source?: "manual";
+  updatedAt?: string;
   sessions?: number;
   pageViews?: number;
   orders?: number;
@@ -49,6 +54,12 @@ export interface AdRecord {
   cpc?: number;
   ctr?: number;
   cvr?: number;
+  acos?: number;
+  roas?: number;
+  topOfSearchImpressionShare?: number;
+  adjusted?: boolean;
+  source?: "manual";
+  updatedAt?: string;
 }
 
 export interface ManualRecord {

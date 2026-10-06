@@ -6,6 +6,9 @@ import { buildDailyPromotionPlan } from "../data/promotion-plan";
 import type { PromotionPlanOverride } from "../domain/planning";
 import { parsePromotionPlanReport } from "../import/promotion-plan-parser";
 import { opsDb } from "../storage/db";
+import { loadPlan } from "../data/plan";
+import { ManualAdForm } from "./ManualAdForm";
+import { ImportPanel } from "./ImportPanel";
 
 export interface PromotionPageProps {
   ads: readonly AdRecord[];
@@ -16,6 +19,9 @@ export interface PromotionPageProps {
   onBack: () => void;
   onOpenReview?: () => void;
   onOpenDailyOperations?: () => void;
+  onAdsChanged?: () => void | Promise<void>;
+  loaded?: boolean;
+  error?: string;
 }
 
 const money = (value: number) => `US$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
@@ -72,20 +78,26 @@ function recommendation(actualUnits: number, targetUnits: number, ad: ReturnType
   return "按计划推进，观察广告单与自然单是否同步增长。";
 }
 
-export function PromotionPage({ ads, business, manual, startDate, endDate, onBack, onOpenReview, onOpenDailyOperations }: PromotionPageProps) {
-  const [overrides, setOverrides] = useState<PromotionPlanOverride[]>([]);
+export function PromotionPage({ ads, business, manual, startDate, endDate, onBack, onOpenReview, onOpenDailyOperations, onAdsChanged, loaded = true, error }: PromotionPageProps) {
   const [draftOverrides, setDraftOverrides] = useState<PromotionPlanOverride[]>([]);
   const [importMessage, setImportMessage] = useState<string>();
   const [importIssues, setImportIssues] = useState<string[]>([]);
+  const [showAdEntry, setShowAdEntry] = useState(false);
+  const [showAdImport, setShowAdImport] = useState(false);
+  const [adEntryDate, setAdEntryDate] = useState<string>();
+  const [planLoaded, setPlanLoaded] = useState(false);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const plan = useMemo(() => loadPlan(), []);
 
   const refreshPromotionPlan = async () => {
     const saved = await opsDb.listPromotionPlanOverrides();
-    setOverrides(saved);
     setDraftOverrides(saved);
   };
 
   useEffect(() => {
-    void refreshPromotionPlan();
+    let active = true;
+    void opsDb.listPromotionPlanOverrides().then((saved) => { if (active) { setDraftOverrides(saved); setPlanLoaded(true); } }).catch((error) => { if (active) setImportMessage(error instanceof Error ? error.message : "无法读取推广计划"); });
+    return () => { active = false; };
   }, []);
 
   async function handlePromotionPlanFile(file: File | undefined) {
@@ -129,10 +141,14 @@ export function PromotionPage({ ads, business, manual, startDate, endDate, onBac
   }
 
   async function savePromotionPlanEdits() {
-    await opsDb.replacePromotionPlanOverrides(draftOverrides);
-    setOverrides(draftOverrides);
-    setImportMessage(`计划修改已保存 ${draftOverrides.length} 天`);
-    setImportIssues([]);
+    if (!planLoaded || savingPlan) return;
+    setSavingPlan(true); setImportMessage(undefined);
+    try {
+      await opsDb.replacePromotionPlanOverrides(draftOverrides);
+      setImportMessage(`计划修改已保存 ${draftOverrides.length} 天`);
+      setImportIssues([]);
+    } catch (cause) { setImportMessage(cause instanceof Error ? cause.message : "保存计划失败，请重试。"); }
+    finally { setSavingPlan(false); }
   }
 
   const overrideByDate = useMemo(() => new Map(draftOverrides.map((override) => [override.date, override])), [draftOverrides]);
@@ -154,6 +170,8 @@ export function PromotionPage({ ads, business, manual, startDate, endDate, onBac
   const totalAd = sumAds(ads.filter((row) => row.date >= startDate && row.date <= endDate));
   const totalTargetUnits = rows.reduce((sum, row) => sum + row.targetDailyUnits, 0);
   const totalActualUnits = rows.reduce((sum, row) => sum + row.actualUnits, 0);
+  const dataReady = loaded && !error;
+  const unavailable = error ? "读取失败" : "加载中";
 
   return (
     <main className="dashboard-shell promotion-shell">
@@ -163,22 +181,27 @@ export function PromotionPage({ ads, business, manual, startDate, endDate, onBac
           <p className="as-of">按天展示 · {startDate} 至 {endDate}</p>
         </div></div>
         <div className="dashboard-header-actions">
+          <button className="secondary-button" type="button" aria-expanded={showAdEntry} onClick={() => { setAdEntryDate(undefined); setShowAdEntry((shown) => adEntryDate ? true : !shown); }}>手动录入广告</button>
+          <button className="secondary-button" type="button" aria-expanded={showAdImport} onClick={() => setShowAdImport((shown) => !shown)}>上传广告报表</button>
           {onOpenReview ? <button className="secondary-button" type="button" onClick={onOpenReview}>进入推广复盘图表</button> : null}
           {onOpenDailyOperations ? <button className="secondary-button" type="button" onClick={onOpenDailyOperations}>每日操作</button> : null}
           <button className="secondary-button" type="button" onClick={onBack}>返回经营驾驶舱</button>
         </div>
       </header>
 
+      {error ? <p role="alert">广告数据读取失败：{error}；请刷新后再修改。</p> : null}
+      {showAdEntry ? <ManualAdForm key={adEntryDate ?? "new-ad"} mappings={plan.primaryMappings} records={ads} loaded={loaded && !error} initialDate={adEntryDate} onCancel={() => { setShowAdEntry(false); setAdEntryDate(undefined); }} onSaved={async () => { await onAdsChanged?.(); }} /> : null}
+      {showAdImport ? <div className="operations-panel"><ImportPanel plan={plan} initialReportKind="ads" onImported={onAdsChanged} /></div> : null}
       <section className="promotion-kpi-grid" aria-label="推广核心指标">
         <article><span>计划销量</span><strong>{quantity(totalTargetUnits)}</strong></article>
-        <article><span>实际销量</span><strong>{quantity(totalActualUnits)}</strong></article>
-        <article><span>广告花费</span><strong>{money(totalAd.spend)}</strong></article>
-        <article><span>广告销售额</span><strong>{money(totalAd.adSales)}</strong></article>
-        <article><span>广告订单</span><strong>{totalAd.adOrders}</strong></article>
-        <article><span>ACOS</span><strong>{percent(totalAd.acos)}</strong></article>
-        <article><span>CPC</span><strong>{totalAd.cpc === null ? "—" : `US$${decimal(totalAd.cpc)}`}</strong></article>
-        <article><span>CTR</span><strong>{percent(totalAd.ctr)}</strong></article>
-        <article><span>CVR</span><strong>{percent(totalAd.cvr)}</strong></article>
+        <article><span>实际销量</span><strong>{dataReady ? quantity(totalActualUnits) : unavailable}</strong></article>
+        <article><span>广告花费</span><strong>{dataReady ? money(totalAd.spend) : unavailable}</strong></article>
+        <article><span>广告销售额</span><strong>{dataReady ? money(totalAd.adSales) : unavailable}</strong></article>
+        <article><span>广告订单</span><strong>{dataReady ? totalAd.adOrders : unavailable}</strong></article>
+        <article><span>ACOS</span><strong>{dataReady ? percent(totalAd.acos) : unavailable}</strong></article>
+        <article><span>CPC</span><strong>{!dataReady ? unavailable : totalAd.cpc === null ? "—" : `US$${decimal(totalAd.cpc)}`}</strong></article>
+        <article><span>CTR</span><strong>{dataReady ? percent(totalAd.ctr) : unavailable}</strong></article>
+        <article><span>CVR</span><strong>{dataReady ? percent(totalAd.cvr) : unavailable}</strong></article>
       </section>
 
       <section className="panel promotion-actions-panel" aria-labelledby="promotion-actions-heading">
@@ -205,15 +228,17 @@ export function PromotionPage({ ads, business, manual, startDate, endDate, onBac
             aria-label="上传/更新推广计划"
             type="file"
             accept=".csv,.xlsx,.xls"
-            onChange={(event) => void handlePromotionPlanFile(event.currentTarget.files?.[0])}
+            onChange={(event) => void handlePromotionPlanFile(event.currentTarget.files?.[0]).catch((cause) => setImportMessage(cause instanceof Error ? cause.message : "更新计划失败，请重试。"))}
           />
-          <button className="secondary-button" type="button" onClick={() => void savePromotionPlanEdits()}>保存计划修改</button>
+          <button className="secondary-button" type="button" disabled={!planLoaded || savingPlan} onClick={() => void savePromotionPlanEdits()}>{savingPlan ? "正在保存计划…" : "保存计划修改"}</button>
+          <p className="analytics-note">广告为当日活动汇总；使用每行左侧“修改当日广告”打开该日期的原始活动记录，不能直接改汇总数字。</p>
           {importMessage && <p role="status">{importMessage}</p>}
           {importIssues.length ? <ul aria-label="推广计划导入问题">{importIssues.map((issue, index) => <li key={`${issue}-${index}`}>{issue}</li>)}</ul> : null}
         </div>
         <div className="table-scroll">
           <table aria-label="每日推广作战表">
             <colgroup>
+              <col className="promotion-col-edit" />
               <col className="promotion-col-date" />
               <col className="promotion-col-phase" />
               <col className="promotion-col-small" />
@@ -240,18 +265,19 @@ export function PromotionPage({ ads, business, manual, startDate, endDate, onBac
               <col className="promotion-col-long" />
               <col className="promotion-col-long" />
             </colgroup>
-            <thead><tr><th scope="col">日期</th><th scope="col">阶段</th><th scope="col">目标日销</th><th scope="col">实际销量</th><th scope="col">完成率</th><th scope="col">计划广告</th><th scope="col">计划销售额</th><th scope="col">目标ACOS</th><th scope="col">售价</th><th scope="col">广告花费</th><th scope="col">广告销售额</th><th scope="col">广告订单</th><th scope="col">ACOS</th><th scope="col">CPC</th><th scope="col">CTR</th><th scope="col">CVR</th><th scope="col">站外推广出单</th><th scope="col">服务商</th><th scope="col">测评单号</th><th scope="col">测评数量</th><th scope="col">站外计划</th><th scope="col">操作重点</th><th scope="col">测评计划</th><th scope="col">结论/下步</th><th scope="col">当日建议</th></tr></thead>
+            <thead><tr><th scope="col" className="record-edit-column">广告修改</th><th scope="col">日期</th><th scope="col">阶段</th><th scope="col">目标日销</th><th scope="col">实际销量</th><th scope="col">完成率</th><th scope="col">计划广告</th><th scope="col">计划销售额</th><th scope="col">目标ACOS</th><th scope="col">售价</th><th scope="col">广告花费</th><th scope="col">广告销售额</th><th scope="col">广告订单</th><th scope="col">ACOS</th><th scope="col">CPC</th><th scope="col">CTR</th><th scope="col">CVR</th><th scope="col">站外推广出单</th><th scope="col">服务商</th><th scope="col">测评单号</th><th scope="col">测评数量</th><th scope="col">站外计划</th><th scope="col">操作重点</th><th scope="col">测评计划</th><th scope="col">结论/下步</th><th scope="col">当日建议</th></tr></thead>
             <tbody>{rows.map((row) => (
               <tr key={row.date}>
+                <td className="record-edit-column"><button type="button" className="table-action-button" disabled={!loaded || Boolean(error)} aria-label={`修改当日广告 ${row.date}`} onClick={() => { setAdEntryDate(row.date); setShowAdEntry(true); }}>修改当日广告</button></td>
                 <th scope="row">{readableCell(row.date)}<span className="promotion-date-display" aria-hidden="true">{displayPromotionDate(row.date)}</span></th>
                 <td>{readableCell(row.phase)}<input aria-label={`${row.date} 阶段`} value={row.phase ?? ""} onChange={(event) => updatePromotionDraft(row.date, "phase", event.currentTarget.value)} /></td>
                 <td>{readableCell(row.targetDailyUnits)}<input aria-label={`${row.date} 目标日销`} type="number" value={row.targetDailyUnits ?? ""} onChange={(event) => updatePromotionDraft(row.date, "targetDailyUnits", event.currentTarget.value)} /></td>
-                <td>{row.actualUnits}</td><td>{percent(row.completion)}</td>
+                <td>{dataReady ? row.actualUnits : unavailable}</td><td>{dataReady ? percent(row.completion) : unavailable}</td>
                 <td>{readableCell(row.plannedAdBudget)}<input aria-label={`${row.date} 计划广告`} value={row.plannedAdBudget ?? ""} onChange={(event) => updatePromotionDraft(row.date, "plannedAdBudget", event.currentTarget.value)} /></td>
                 <td>{readableCell(row.plannedSales)}<input aria-label={`${row.date} 计划销售额`} value={row.plannedSales ?? ""} onChange={(event) => updatePromotionDraft(row.date, "plannedSales", event.currentTarget.value)} /></td>
                 <td>{readableCell(row.targetAcos)}<input aria-label={`${row.date} 目标ACOS`} value={row.targetAcos ?? ""} onChange={(event) => updatePromotionDraft(row.date, "targetAcos", event.currentTarget.value)} /></td>
                 <td>{readableCell(row.targetPrice)}<input aria-label={`${row.date} 售价`} value={row.targetPrice ?? ""} onChange={(event) => updatePromotionDraft(row.date, "targetPrice", event.currentTarget.value)} /></td>
-                <td>{money(row.ad.spend)}</td><td>{money(row.ad.adSales)}</td><td>{row.ad.adOrders}</td><td>{percent(row.ad.acos)}</td><td>{row.ad.cpc === null ? "—" : `US$${decimal(row.ad.cpc)}`}</td><td>{percent(row.ad.ctr)}</td><td>{percent(row.ad.cvr)}</td>
+                <td>{dataReady ? money(row.ad.spend) : unavailable}</td><td>{dataReady ? money(row.ad.adSales) : unavailable}</td><td>{dataReady ? row.ad.adOrders : unavailable}</td><td>{dataReady ? percent(row.ad.acos) : unavailable}</td><td>{!dataReady ? unavailable : row.ad.cpc === null ? "—" : `US$${decimal(row.ad.cpc)}`}</td><td>{dataReady ? percent(row.ad.ctr) : unavailable}</td><td>{dataReady ? percent(row.ad.cvr) : unavailable}</td>
                 <td>{readableCell(row.offsiteOrders)}<input aria-label={`${row.date} 站外推广出单`} type="number" value={row.offsiteOrders ?? ""} onChange={(event) => updatePromotionDraft(row.date, "offsiteOrders", event.currentTarget.value)} /></td>
                 <td>{readableCell(row.serviceProvider)}<input aria-label={`${row.date} 服务商`} value={row.serviceProvider ?? ""} onChange={(event) => updatePromotionDraft(row.date, "serviceProvider", event.currentTarget.value)} /></td>
                 <td>{readableCell(row.reviewOrderNumber)}<input aria-label={`${row.date} 测评单号`} value={row.reviewOrderNumber ?? ""} onChange={(event) => updatePromotionDraft(row.date, "reviewOrderNumber", event.currentTarget.value)} /></td>
@@ -260,7 +286,7 @@ export function PromotionPage({ ads, business, manual, startDate, endDate, onBac
                 <td>{readableCell(row.operationFocus)}<textarea aria-label={`${row.date} 操作重点`} value={row.operationFocus ?? ""} onChange={(event) => updatePromotionDraft(row.date, "operationFocus", event.currentTarget.value)} /></td>
                 <td>{readableCell(row.reviewPlan)}<textarea aria-label={`${row.date} 测评计划`} value={row.reviewPlan ?? ""} onChange={(event) => updatePromotionDraft(row.date, "reviewPlan", event.currentTarget.value)} /></td>
                 <td>{readableCell([row.weeklyConclusion, row.nextAction].filter(Boolean).join("\n"))}<textarea aria-label={`${row.date} 结论/下步`} value={[row.weeklyConclusion, row.nextAction].filter(Boolean).join("\n")} onChange={(event) => updatePromotionDraft(row.date, "weeklyConclusion", event.currentTarget.value)} /></td>
-                <td>{recommendation(row.actualUnits, row.targetDailyUnits, row.ad)}</td>
+                <td>{dataReady ? recommendation(row.actualUnits, row.targetDailyUnits, row.ad) : "等待数据读取后再判断"}</td>
               </tr>
             ))}</tbody>
           </table>

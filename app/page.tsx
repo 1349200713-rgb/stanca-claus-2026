@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionList } from "../src/components/ActionList";
 import { DashboardFilters, type DashboardMode, type DashboardSize } from "../src/components/DashboardFilters";
 import { ImportPanel } from "../src/components/ImportPanel";
+import { ManualSalesForm } from "../src/components/ManualSalesForm";
+import { ManualAdForm } from "../src/components/ManualAdForm";
 import { InventoryRisk, type InventoryRiskRow } from "../src/components/InventoryRisk";
 import { KpiCard, type KpiCardProps } from "../src/components/KpiCard";
 import { PlanVsActualChart } from "../src/components/PlanVsActualChart";
@@ -12,6 +14,7 @@ import { TrendChart } from "../src/components/TrendChart";
 import { PlanInventoryPage } from "../src/components/PlanInventoryPage";
 import { PromotionPage } from "../src/components/PromotionPage";
 import { PromotionReviewPage } from "../src/components/PromotionReviewPage";
+import { AdvertisingDashboard } from "../src/components/AdvertisingDashboard";
 import { DailyOperationsPage } from "../src/components/DailyOperationsPage";
 import { DataMigrationPanel } from "../src/components/DataMigrationPanel";
 import { CompetitorPage } from "../src/components/CompetitorPage";
@@ -43,7 +46,7 @@ interface AsinInboundSummaryRow {
   earliestArrivalDate: string | null;
 }
 
-const OPS_PAGES: OpsPage[] = ["dashboard", "plan-inventory", "promotion", "promotion-review", "daily-operations", "competitors", "keywords"];
+const OPS_PAGES: OpsPage[] = ["dashboard", "plan-inventory", "promotion", "advertising-dashboard", "promotion-review", "daily-operations", "competitors", "keywords"];
 function queryValue(name: string, fallback: string): string {
   if (typeof window === "undefined") return fallback;
   return new URLSearchParams(window.location.search).get(name) || fallback;
@@ -109,9 +112,15 @@ function DashboardContent() {
     return OPS_PAGES.includes(value) ? value : "dashboard";
   });
   const [loaded, setLoaded] = useState(false);
+  const [dataLoadError, setDataLoadError] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [showManualAds, setShowManualAds] = useState(false);
+  const [editingAdRecord, setEditingAdRecord] = useState<AdRecord>();
+  const closeAdEntry = () => { setShowManualAds(false); setEditingAdRecord(undefined); };
+  const toggleAdEntry = () => { setShowManualAds((shown) => editingAdRecord ? true : !shown); setEditingAdRecord(undefined); };
 
   const refresh = useCallback(async () => {
+    setLoaded(false);
     try {
       const [nextBusiness, nextAds, nextManual, nextImports, nextActivePlan, nextInventory, nextInbound, nextPromotionOverrides, nextDailyOperations] = await loadOpsData();
       setBusiness(nextBusiness);
@@ -123,8 +132,9 @@ function DashboardContent() {
       setInboundEntries(nextInbound);
       setPromotionOverrides(nextPromotionOverrides);
       setDailyOperations(nextDailyOperations);
-    } catch {
-      // SSR and minimal test DOMs may not expose IndexedDB; the explicit empty state remains valid.
+      setDataLoadError("");
+    } catch (error) {
+      setDataLoadError(`读取经营数据失败，当前广告数据可能不完整：${error instanceof Error ? error.message : "请检查连接后重试"}`);
     } finally {
       setLoaded(true);
     }
@@ -141,7 +151,8 @@ function DashboardContent() {
       setInboundEntries(nextInbound);
       setPromotionOverrides(nextPromotionOverrides);
       setDailyOperations(nextDailyOperations);
-    }).catch(() => undefined).finally(() => setLoaded(true));
+      setDataLoadError("");
+    }).catch((error) => setDataLoadError(`读取经营数据失败，当前广告数据可能不完整：${error instanceof Error ? error.message : "请检查连接后重试"}`)).finally(() => setLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -154,6 +165,9 @@ function DashboardContent() {
   const series = useMemo(() => buildDashboardSeries({ plan, business, ads, manual, startDate, endDate, size, mode, activePlan }),
     [business, ads, manual, startDate, endDate, size, mode, activePlan]);
   const current = selectDashboardSnapshot(series, mode);
+  const planSourceLabel = activePlan ? "已保存日度计划" : "工作簿推导计划";
+  const snapshotLabel = current ? mode === "daily" ? `${current.rangeStartDate} 单日`
+    : `${current.rangeStartDate} 至 ${current.rangeEndDate} ${mode === "weekly" ? "当周" : "累计"}` : "所选范围无数据";
   const hasReports = business.length > 0 || ads.length > 0;
   const targetPrice = Number(plan.targetThresholds.minimumWeightedPriceUsd);
   const activeTargets = size === "all" ? {
@@ -165,7 +179,7 @@ function DashboardContent() {
   const targetAcos = activeTargets.targetAcos ?? Number(plan.targetThresholds.targetAcosRate);
 
   const kpis: KpiCardProps[] = hasReports && current ? [
-    { label: "销量完成率", primaryValue: percent(current.completionRate), comparison: current.actualUnits === null ? "缺少业务报告" : `实际 ${current.actualUnits.toFixed(0)} / 推导计划 ${current.plannedUnits.toFixed(1)}`, status: statusForTarget(current.completionRate, activeTargets.completionRate ?? 0.9, true) },
+    { label: "销量完成率", primaryValue: percent(current.completionRate), comparison: `${snapshotLabel} · ${current.actualUnits === null ? current.observedSizeDays === 0 ? "尚未录入销量" : `销量数据不全（已录入 ${current.observedUnits} 件）` : `实际 ${current.actualUnits} 件`} / ${current.planDataComplete ? `${planSourceLabel} ${current.plannedUnits.toFixed(1)} 件` : "未设完整日计划"}`, status: statusForTarget(current.completionRate, activeTargets.completionRate ?? 0.9, true) },
     { label: "销售额", primaryValue: money(current.sales), comparison: `计划差额 ${money(current.salesVariance)}`, status: statusForTarget(current.sales, current.plannedSales, true) },
     { label: "均价", primaryValue: price(current.averagePrice), comparison: `目标 ${price(targetPrice)}`, status: statusForTarget(current.averagePrice, targetPrice, true) },
     { label: "毛利润 / 毛利率", primaryValue: current.grossProfit === null ? "数据不完整" : `${money(current.grossProfit)} · ${percent(current.grossMargin)}`, comparison: current.grossProfit === null ? `缺少：${current.dataGaps.filter((gap) => ["退款", "折扣", "成本假设", "广告报告"].includes(gap)).join("、") || "财务输入"}` : `目标毛利率 ${percent(targetMargin)}`, status: statusForTarget(current.grossMargin, targetMargin, true) },
@@ -174,15 +188,15 @@ function DashboardContent() {
     label, primaryValue: "—", comparison: "等待导入报告", status: "attention" as const,
   }));
 
-  const planRows = series.map((row, index) => {
-    const previous = index > 0 ? series[index - 1] : undefined;
+  const planRows = series.map((row) => {
     const valuesAreCumulative = mode === "cumulative";
     return {
       date: row.date.slice(5),
-      plannedDaily: valuesAreCumulative ? row.plannedUnits - (previous?.plannedUnits ?? 0) : row.plannedUnits,
-      actualDaily: row.actualUnits === null ? null : (valuesAreCumulative ? row.actualUnits - (previous?.actualUnits ?? 0) : row.actualUnits),
-      plannedCumulative: valuesAreCumulative ? row.plannedUnits : series.slice(0, index + 1).reduce((sum, item) => sum + item.plannedUnits, 0),
-      actualCumulative: row.actualUnits === null ? null : (valuesAreCumulative ? row.actualUnits : series.slice(0, index + 1).reduce((sum, item) => sum + (item.actualUnits ?? 0), 0)),
+      periodLabel: row.rangeStartDate === row.rangeEndDate ? row.rangeStartDate : `${row.rangeStartDate} 至 ${row.rangeEndDate}`,
+      plannedDaily: !valuesAreCumulative && row.planDataComplete ? row.plannedUnits : null,
+      actualDaily: !valuesAreCumulative ? row.actualUnits : null,
+      plannedCumulative: valuesAreCumulative && row.planDataComplete ? row.plannedUnits : null,
+      actualCumulative: valuesAreCumulative ? row.actualUnits : null,
     };
   });
 
@@ -250,10 +264,17 @@ function DashboardContent() {
     return <PlanInventoryPage plan={plan} onBack={() => { setPage("dashboard"); void refresh(); }} onPlanSaved={setActivePlan} />;
   }
   if (page === "promotion") {
-    return <PromotionPage ads={ads} business={business} manual={manual} startDate="2026-10-02" endDate="2026-12-20" onBack={() => { setPage("dashboard"); void refresh(); }} onOpenReview={() => setPage("promotion-review")} onOpenDailyOperations={() => setPage("daily-operations")} />;
+    return <PromotionPage ads={ads} business={business} manual={manual} loaded={loaded} error={dataLoadError} startDate="2026-10-02" endDate="2026-12-20" onBack={() => { setPage("dashboard"); void refresh(); }} onOpenReview={() => setPage("promotion-review")} onOpenDailyOperations={() => setPage("daily-operations")} onAdsChanged={refresh} />;
   }
   if (page === "promotion-review") {
     return <PromotionReviewPage ads={ads} business={business} overrides={promotionOverrides} operations={dailyOperations} startDate="2026-10-02" endDate="2026-12-20" onBack={() => { setPage("promotion"); void refresh(); }} />;
+  }
+  if (page === "advertising-dashboard") {
+    return <AdvertisingDashboard records={ads} mappings={plan.primaryMappings} loaded={loaded} error={dataLoadError} targetAcos={Number(plan.targetThresholds.targetAcosRate)}
+      onBack={() => { closeAdEntry(); setPage("dashboard"); }} onRefresh={refresh} onOpenManual={toggleAdEntry} onOpenImport={() => setShowImport((shown) => !shown)} onEditRecord={(record) => { setEditingAdRecord(record); setShowManualAds(true); }}>
+      {showManualAds ? <ManualAdForm key={editingAdRecord?.key ?? "new-ad"} mappings={plan.primaryMappings} records={ads} loaded={loaded && !dataLoadError} initialRecord={editingAdRecord} onCancel={closeAdEntry} onSaved={refresh} /> : null}
+      {showImport ? <div className="operations-panel"><ImportPanel plan={plan} initialReportKind="ads" onImported={refresh} /></div> : null}
+    </AdvertisingDashboard>;
   }
   if (page === "daily-operations") {
     return <DailyOperationsPage operations={dailyOperations} defaultDate={endDate} draft={operationDraft} onBack={() => { setOperationDraft(undefined); setPage("promotion"); void refresh(); }} onChanged={refresh} />;
@@ -268,14 +289,17 @@ function DashboardContent() {
       <header className="dashboard-header">
         <div className="brand-lockup"><span className="brand-mark" aria-hidden="true">SO</span><div>
           <p className="brand-kicker">DAILY OPERATIONS COCKPIT</p><h1>SANTA OPS 2026</h1>
-          <p className="as-of">数据截至 {endDate} · 当前尺码：{size === "all" ? "全部" : size}</p>
+          <p className="as-of">筛选范围 {startDate} 至 {endDate} · 当前尺码：{size === "all" ? "全部" : size}</p>
         </div></div>
         <div className="header-actions">
           <button className="import-button" type="button" onClick={() => setShowImport((shown) => !shown)}><span aria-hidden="true">＋</span> 导入今日数据</button>
+          <button className="secondary-button" type="button" aria-expanded={showManualAds} onClick={toggleAdEntry}>手动录入广告</button>
           <OpsNavigation current={page} onNavigate={setPage} />
         </div>
       </header>
       <DailySizeComparison plan={plan} activePlan={activePlan} business={business} loaded={loaded} fallbackDate={endDate} onOpenPlan={() => setPage("plan-inventory")} onCreateOperation={(draft) => { setOperationDraft(draft); setPage("daily-operations"); }} />
+      <ManualSalesForm mappings={plan.primaryMappings} records={business} loaded={loaded} onSaved={async (record) => { setStartDate(record.date); setEndDate(record.date); await refresh(); }} />
+      {showManualAds ? <ManualAdForm key={editingAdRecord?.key ?? "new-ad"} mappings={plan.primaryMappings} records={ads} loaded={loaded && !dataLoadError} initialRecord={editingAdRecord} onCancel={closeAdEntry} onSaved={async (record) => { setStartDate(record.date); setEndDate(record.date); await refresh(); }} /> : null}
       <section className="v2-dashboard-summary" aria-label="计划与库存摘要"><strong>计划与库存</strong><span>{activePlan ? `计划更新：${new Date(activePlan.updatedAt).toLocaleString("zh-CN")}` : "计划尚未初始化"}</span><span>{latestInventoryDate ? `库存快照：${latestInventoryDate}` : "尚无库存快照"}</span>{inventoryComplete ? null : <span>库存数据不足（缺少部分尺码或必填字段）</span>}<button type="button" onClick={() => setPage("plan-inventory")}>进入计划与库存</button></section>
       <DataMigrationPanel
         preview={previewLocalMigration}
@@ -297,7 +321,7 @@ function DashboardContent() {
         </section>
       ) : null}
 
-      <div className="data-quality-banner" role="alert"><strong>数据质量提示：</strong>权威采购尺码分配合计 3000 件（L 520 / XL 1600 / 2XL 550 / 3XL 330），源工作簿周计划合计 3010 件且尺码冲突。图表使用“推导计划”，原始 3010 数据仍保留在计划 JSON 与审计说明中。</div>
+      <div className="data-quality-banner" role="alert"><strong>数据质量提示：</strong>权威采购尺码分配合计 3000 件（L 520 / XL 1600 / 2XL 550 / 3XL 330），源工作簿周计划合计 3010 件且尺码冲突。当前图表使用“{planSourceLabel}”{activePlan ? "，不是工作簿的默认推导值" : "（按权威采购总量分配）"}；原始 3010 数据仍保留在计划 JSON 与审计说明中。</div>
       <section className="filter-bar" aria-label="数据筛选">
         <DashboardFilters startDate={startDate} endDate={endDate} size={size} mode={mode} onStartDateChange={setStartDate} onEndDateChange={setEndDate} onSizeChange={setSize} onModeChange={setMode} />
         <div className="freshness-indicator"><span aria-hidden="true" />{lastImport ? `最近导入：${new Date(lastImport.importedAt).toLocaleString("zh-CN")}` : "尚未导入"} · 完整性：{completeness}</div>
@@ -305,9 +329,14 @@ function DashboardContent() {
       {!hasReports && loaded ? <p className="empty-state">请先导入业务报告和广告报告。当前仅显示推导计划，不会把演示值作为真实经营结果。</p> : null}
       {showImport ? <div className="operations-panel"><ImportPanel plan={{ sizeBySku: plan.sizeBySku, sizeByAsin: plan.sizeByAsin }} onImported={refresh} /></div> : null}
 
+      <p className="sales-scope-label">核心指标口径：{snapshotLabel} · {size === "all" ? "全部尺码" : size}。每日模式取所选区间内最近有数据日，不代表整个区间合计。</p>
       <section className="kpi-grid" aria-label="核心指标">{kpis.map((card) => <KpiCard key={card.label} {...card} />)}</section>
       <section className="main-analysis" aria-label="核心分析">
-        <PlanVsActualChart rows={planRows} mode={mode} summary={current?.actualUnits !== null && current?.actualUnits !== undefined ? `实际 ${current.actualUnits.toFixed(0)} 件 · 推导计划 ${current.plannedUnits.toFixed(1)} 件 · 进度差 ${current.unitVariance?.toFixed(1)} 件` : "暂无实际报告数据；灰线为推导计划"} />
+        <PlanVsActualChart rows={planRows} mode={mode} planSource={activePlan ? "saved" : "derived"}
+          dateRangeLabel={`${startDate} 至 ${endDate} · ${size === "all" ? "全部尺码" : size}`}
+          comparisonLabel={snapshotLabel}
+          comparison={current ? { actualUnits: current.actualUnits, plannedUnits: current.planDataComplete ? current.plannedUnits : null, variance: current.unitVariance, completionRate: current.completionRate, observedUnits: current.observedUnits, hasPartialActual: current.actualUnits === null && current.observedSizeDays > 0 } : undefined}
+          summary={current?.actualUnits !== null && current?.actualUnits !== undefined ? `实际 ${current.actualUnits.toFixed(0)} 件 · ${current.planDataComplete ? `${planSourceLabel} ${current.plannedUnits.toFixed(1)} 件` : "未设完整日计划"}` : current && current.observedSizeDays > 0 ? `已录入 ${current.observedUnits} 件，缺少 ${current.expectedSizeDays - current.observedSizeDays} 个日期×尺码的数据，暂不计算总完成率。` : "暂无实际销量数据。灰色虚线为计划；缺失实际数据不补零、不连线。"} />
         <InventoryRisk rows={inventoryRows} aggregateSignals={risks.aggregateSignals} />
       </section>
       <section className="trend-grid" aria-label="经营趋势">

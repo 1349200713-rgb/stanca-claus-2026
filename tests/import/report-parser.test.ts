@@ -150,6 +150,33 @@ describe("report parser", () => {
   });
 });
 
+describe("Amazon advertising exports", () => {
+  test("recognizes campaign exports with native column names and an explicit single-day date", () => {
+    const csv = "广告活动名称,广告活动开始日期,展示量,点击量,点击率,总成本,销售额,订单\nsanta suit,2024-11-21,351,1,0.28%,US$1.26,US$59.99,1";
+    const result = parseReport(new TextEncoder().encode(csv).buffer, "export.csv", skuMap, { fallbackAdDate: "2026-10-04" });
+    expect(result.reportKind).toBe("ads");
+    expect(result.fatal).toBe(false);
+    expect(result.records).toMatchObject([{ date: "2026-10-04", campaign: "santa suit", spend: 1.26, adSales: 59.99, adOrders: 1, impressions: 351, clicks: 1 }]);
+    expect((result.records[0] as AdRecord).ctr).toBeCloseTo(0.0028);
+  });
+
+  test("classifies incomplete advertising files as ads without inventing dates or revenue", () => {
+    const csv = "Campaign Name,Start Date,Impressions,Clicks,Cost,7 Day Total Sales\nSanta,2024-11-21,1000,10,12,60";
+    const result = parseReport(new TextEncoder().encode(csv).buffer, "export.csv", skuMap);
+    expect(result.reportKind).toBe("ads");
+    expect(result.fatal).toBe(true);
+    expect(result.records).toEqual([]);
+    expect(result.issues.map((issue) => issue.field)).toEqual(["date", "adOrders"]);
+  });
+
+  test("recognizes English attributed-sales columns and uses file dates before any fallback", () => {
+    const csv = 'Date,Campaign Name,Spend (USD),7 Day Total Sales,7 Day Total Orders (#),Advertised ASIN,Advertised SKU\n2026-10-03,Holiday,12.50,90.25,2,b0cfpr34mh,A022-XXX-09-0B500';
+    const result = parseReport(new TextEncoder().encode(csv).buffer, "export.csv", skuMap, { fallbackAdDate: "2026-10-04" });
+    expect(result.fatal).toBe(false);
+    expect(result.records).toMatchObject([{ date: "2026-10-03", spend: 12.5, adSales: 90.25, adOrders: 2, asin: "B0CFPR34MH", sku: "A022-XXX-09-0B500" }]);
+  });
+});
+
 describe("dedupe", () => {
   test("returns duplicate deterministic keys without mutating either input", () => {
     const existing: BusinessRecord[] = [{ key: "business:2026-11-24:A022", date: "2026-11-24", asin: "", sku: "A022", size: "XL", units: 8, sales: 506.16, refunds: 0 }];

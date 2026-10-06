@@ -5,6 +5,7 @@ import type { PlanModel } from "../data/plan";
 import type { ActivePlan, DailyOperationDraft } from "../domain/planning";
 import type { BusinessRecord, SizeCode } from "../domain/types";
 import { buildDailySizeComparison, type DailySizeComparisonRow } from "../integration/daily-size-comparison";
+import { SalesComparisonSummary } from "./SalesComparisonSummary";
 
 interface Props {
   plan: PlanModel;
@@ -55,8 +56,8 @@ export function DailySizeComparison({ plan, activePlan, business, loaded, fallba
     const missingText = total && partial ? "数据不全" : "未导入";
     return <tr key={row.size} data-state={row.status} className={total ? "daily-size-total" : undefined}>
       <th scope="row">{total ? "合计" : row.size}</th>
-      <td>{row.plannedUnits === null ? "未设计划" : units(row.plannedUnits)}</td>
-      <td>{row.actualUnits === null ? missingText : units(row.actualUnits)}</td>
+      <td className="daily-size-planned">{row.plannedUnits === null ? "未设计划" : units(row.plannedUnits)}</td>
+      <td className="daily-size-actual">{row.actualUnits === null ? missingText : units(row.actualUnits)}</td>
       <td className="daily-size-result">{row.variance === null ? "—" : `${row.variance > 0 ? "+" : ""}${units(row.variance)}`}</td>
       <td className="daily-size-result">{row.completionRate === null ? "—" : `${(row.completionRate * 100).toLocaleString("zh-CN", { maximumFractionDigits: 1 })}%`}</td>
       <td><span className={`daily-size-status daily-size-status--${row.status}`}>{total && partial ? "数据不全" : statusLabels[row.status]}</span></td>
@@ -65,16 +66,17 @@ export function DailySizeComparison({ plan, activePlan, business, loaded, fallba
 
   return <section className="panel daily-size-panel" aria-labelledby={headingId}>
     <div className="panel-heading daily-size-heading">
-      <div><p className="eyebrow">DAILY SALES</p><h2 id={headingId}>每日尺码销量对比</h2><p className="daily-size-description">四个尺码一次看完 · 单位：件 · 差额 = 实际 − 计划</p></div>
+      <div><p className="eyebrow">DAILY SALES</p><h2 id={headingId}>每日尺码销量对比</h2><p className="daily-size-description">单日对比：{date} · 全部四个尺码 · 单位：件</p></div>
       <div className="daily-size-controls">
         <label className="filter-control"><span>对比日期</span><input type="date" value={date} onChange={(event) => setSelectedDate(event.currentTarget.value)} /></label>
         <button type="button" className="secondary-button" disabled={!latestDate || !loaded} onClick={() => setSelectedDate("")}>最近有数据日</button>
         <button type="button" className="secondary-button" onClick={onOpenPlan}>调整日计划</button>
       </div>
     </div>
+    {loaded ? <SalesComparisonSummary label="单日销量摘要" {...comparison.total} observedUnits={comparison.observedUnits} hasPartialActual={partial} /> : null}
     {loaded ? <div className="table-scroll daily-size-scroll">
       <table className="daily-size-table" aria-label="每日尺码销量对比">
-        <thead><tr><th scope="col">尺码</th><th scope="col">计划销量</th><th scope="col">实际销量</th><th scope="col">差额</th><th scope="col">完成率</th><th scope="col">状态</th></tr></thead>
+        <thead><tr><th scope="col">尺码</th><th scope="col" className="daily-size-planned">计划销量</th><th scope="col" className="daily-size-actual">实际销量</th><th scope="col">差额</th><th scope="col">完成率</th><th scope="col">状态</th></tr></thead>
         <tbody>{comparison.rows.map(renderRow)}</tbody>
         <tfoot>{renderRow(comparison.total)}</tfoot>
       </table>
@@ -84,7 +86,7 @@ export function DailySizeComparison({ plan, activePlan, business, loaded, fallba
         <button key={row.size} type="button" className="secondary-button" onClick={() => onCreateOperation(operationDraft(row))}>处理 {row.size} 异常</button>
       ))}
     </div> : null}
-    <p className="daily-size-note" role="status" aria-live="polite">{!loaded ? "正在加载销量与计划…" : comparison.observedSizeCount === 0 ? "当天尚未导入销量，请通过首页“导入今日数据”上传业务报告。" : partial ? `已录入 ${comparison.observedSizeCount}/4 个尺码，已录入销量 ${units(comparison.observedUnits)} 件；缺失尺码补齐后显示合计差额和完成率。` : "四个尺码数据齐全。绿色表示达标，红色表示未达标。"}</p>
-    <p className="daily-size-source">计划来源：{activePlan ? "计划与库存 · 已保存日度计划" : "原工作簿 · 按尺码分配的推导计划"}。本表始终展示全部尺码，日期以本表选择为准。</p>
+    <p className="daily-size-note" role="status" aria-live="polite">{!loaded ? "正在加载销量与计划…" : comparison.observedSizeCount === 0 ? "当天尚未录入销量，可在下方手动录入或通过“导入今日数据”上传业务报告；零销量也需要录入 0。" : partial ? `已录入 ${comparison.observedSizeCount}/4 个尺码，已录入销量 ${units(comparison.observedUnits)} 件；缺失尺码补齐后显示合计差额和完成率。` : "四个尺码数据齐全。绿色表示达标，红色表示未达标。"}</p>
+    <p className="daily-size-source">计划来源：{activePlan ? "计划与库存 · 已保存日度计划" : "原工作簿 · 按尺码分配的推导计划"}。本表始终展示全部尺码，仅比较所选单日；不受下方趋势图的区间和尺码筛选影响。</p>
   </section>;
 }

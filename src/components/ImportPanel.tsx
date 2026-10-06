@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { AdRecord, BusinessRecord } from "../domain/types";
 import type { InboundEntry, InventorySnapshot } from "../domain/planning";
 import { findDuplicates } from "../import/dedupe";
@@ -29,6 +29,7 @@ export interface ImportPanelProps {
   /** Date used for inventory rows that omit snapshot-date. */
   inventorySnapshotDate?: string;
   onImported?: () => void | Promise<void>;
+  initialReportKind?: ReportKind | "auto";
 }
 
 function importKey(importedAt: string): string {
@@ -36,22 +37,29 @@ function importKey(importedAt: string): string {
   return `import:${importedAt}:${suffix}`;
 }
 
-export function ImportPanel({ plan, inventorySnapshotDate, onImported }: ImportPanelProps) {
+export function ImportPanel({ plan, inventorySnapshotDate, onImported, initialReportKind = "auto" }: ImportPanelProps) {
   const [preview, setPreview] = useState<Preview>();
   const [duplicateAction, setDuplicateAction] = useState<"ignore" | "replace">();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [reportKind, setReportKind] = useState<ReportKind | "auto">(initialReportKind);
+  const [adReportDate, setAdReportDate] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File>();
+  const previewVersion = useRef(0);
 
-  async function handleFile(file: File | undefined) {
+  async function handleFile(file: File | undefined, selectedKind = reportKind, fallbackAdDate = adReportDate) {
     if (!file) return;
+    const version = ++previewVersion.current;
+    setSelectedFile(file);
+    setPreview(undefined);
     setMessage(undefined);
     setDuplicateAction(undefined);
-    const fallbackKind: ReportKind = inventoryKindFromFilename(file.name) ? "inventory" : reportKindFromFilename(file.name);
+    const fallbackKind: ReportKind = selectedKind !== "auto" ? selectedKind : inventoryKindFromFilename(file.name) ? "inventory" : reportKindFromFilename(file.name);
 
     try {
       const bytes = await file.arrayBuffer();
-      const inbound = isInboundReport(bytes);
-      const inventory = !inbound && isInventoryReport(bytes, file.name);
+      const inbound = selectedKind === "inbound" || (selectedKind === "auto" && isInboundReport(bytes));
+      const inventory = selectedKind === "inventory" || (selectedKind === "auto" && !inbound && isInventoryReport(bytes, file.name));
       const result = inbound
         ? parseInboundReport(bytes, file.name, { defaultYear: 2026, updatedAt: new Date().toISOString() })
         : inventory
@@ -59,10 +67,11 @@ export function ImportPanel({ plan, inventorySnapshotDate, onImported }: ImportP
           fallbackDate: inventorySnapshotDate ?? new Date().toISOString().slice(0, 10),
           sourceImportKey: "",
         })
-        : parseReport(bytes, file.name, plan);
+        : parseReport(bytes, file.name, plan, { ...(selectedKind === "ads" || selectedKind === "business" ? { reportKind: selectedKind } : {}), fallbackAdDate });
       const kind = result.reportKind;
       const incoming = result.records as FormalRecord[];
       if (kind === "inbound") {
+        if (version !== previewVersion.current) return;
         setPreview({ filename: file.name, kind, bytes, result, unique: incoming, duplicates: [], comparisons: [] });
         return;
       }
@@ -72,8 +81,10 @@ export function ImportPanel({ plan, inventorySnapshotDate, onImported }: ImportP
           ? await opsDb.list("ads")
           : await opsDb.listInventorySnapshots();
       const { unique, duplicates, comparisons } = findDuplicates(existing as KeyedFormalRecord[], incoming as KeyedFormalRecord[]);
+      if (version !== previewVersion.current) return;
       setPreview({ filename: file.name, kind, bytes, result, unique, duplicates, comparisons });
     } catch (error) {
+      if (version !== previewVersion.current) return;
       setPreview({
         filename: file.name,
         kind: fallbackKind,
@@ -126,6 +137,8 @@ export function ImportPanel({ plan, inventorySnapshotDate, onImported }: ImportP
       else await opsDb.commitImport("inventory", records as InventorySnapshot[], log, evidence);
       setMessage("导入已保存");
       await onImported?.();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "保存失败，请重试");
     } finally {
       setSaving(false);
     }
@@ -137,6 +150,11 @@ export function ImportPanel({ plan, inventorySnapshotDate, onImported }: ImportP
   return (
     <section aria-labelledby="import-panel-heading">
       <h2 id="import-panel-heading">导入报告</h2>
+      <div className="report-import-options">
+        <label>报告类型<select aria-label="报告类型" value={reportKind} onChange={(event) => { const next = event.currentTarget.value as ReportKind | "auto"; setReportKind(next); void handleFile(selectedFile, next, adReportDate); }}><option value="auto">自动识别</option><option value="business">业务（销量 / 销售额）</option><option value="ads">广告报告</option><option value="inventory">库存报告</option><option value="inbound">在途报告</option></select></label>
+        <label>广告报表日期（文件无日期时填写）<input aria-label="广告报表日期" type="date" value={adReportDate} onChange={(event) => { const next = event.currentTarget.value; setAdReportDate(next); void handleFile(selectedFile, reportKind, next); }} /></label>
+      </div>
+      <p className="manual-sales-note">无日期的单日广告导出可补填报表日期；多日汇总请重新导出按日报表。广告活动开始日期不会作为报表日期。缺失的购买量或销售额须补齐后保存。</p>
       <label htmlFor="report-file">选择报告文件</label>
       <input
         id="report-file"

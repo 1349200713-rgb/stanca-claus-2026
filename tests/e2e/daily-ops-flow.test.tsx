@@ -9,6 +9,7 @@ import {
   deriveDailyPlan,
   evaluateDashboardRisks,
   mergeTargets,
+  selectDashboardSnapshot,
   targetsForSize,
   trendIsDeteriorating,
 } from "../../src/integration/dashboard";
@@ -24,6 +25,42 @@ afterEach(async () => {
 });
 
 describe("Santa Ops daily operating flow", () => {
+  test("partial size coverage cannot become an all-size completion rate", () => {
+    const rows = buildDashboardSeries({
+      plan: loadPlan(), business: [{ key: "xl-only", date: "2026-11-20", sku: "XL", asin: "", size: "XL", units: 8, sales: 400 }],
+      ads: [], manual: [], startDate: "2026-11-20", endDate: "2026-11-20", size: "all", mode: "daily",
+    });
+    expect(rows[0]).toMatchObject({ actualUnits: null, completionRate: null, unitVariance: null, sales: 400, observedUnits: 8, observedSizeDays: 1, expectedSizeDays: 4 });
+    expect(rows[0].dataGaps.join(" ")).toContain("销量缺失");
+  });
+
+  test("a missing cumulative day stays incomplete while recorded zero remains real", () => {
+    const rows = buildDashboardSeries({
+      plan: loadPlan(), business: [{ key: "zero", date: "2026-11-20", sku: "L", asin: "", size: "L", units: 0, sales: 0 }],
+      ads: [], manual: [], startDate: "2026-11-20", endDate: "2026-11-21", size: "L", mode: "cumulative",
+    });
+    expect(rows[0]).toMatchObject({ actualUnits: 0, completionRate: 0, observedSizeDays: 1, expectedSizeDays: 1 });
+    expect(rows[1]).toMatchObject({ actualUnits: null, completionRate: null, observedUnits: 0, observedSizeDays: 1, expectedSizeDays: 2 });
+  });
+
+  test("latest daily KPI selects an observed partial business day rather than an empty later day", () => {
+    const rows = buildDashboardSeries({
+      plan: loadPlan(), business: [{ key: "xl-only", date: "2026-11-20", sku: "XL", asin: "", size: "XL", units: 8, sales: 400 }],
+      ads: [], manual: [], startDate: "2026-11-20", endDate: "2026-11-22", size: "all", mode: "daily",
+    });
+    expect(selectDashboardSnapshot(rows, "daily")).toMatchObject({ date: "2026-11-20", actualUnits: null, sales: 400 });
+  });
+
+  test("a saved plan gap does not become a zero-unit target", () => {
+    const row = buildDashboardSeries({
+      plan: loadPlan(), activePlan: { id: "plan-2026", updatedAt: "2026-10-05T00:00:00Z", totalUnits: 0, rows: [] },
+      business: [{ key: "l", date: "2026-11-20", sku: "L", asin: "", size: "L", units: 8, sales: 400 }],
+      ads: [], manual: [], startDate: "2026-11-20", endDate: "2026-11-20", size: "L", mode: "daily",
+    })[0];
+    expect(row).toMatchObject({ actualUnits: 8, completionRate: null, unitVariance: null, planDataComplete: false });
+    expect(row.dataGaps.join(" ")).toContain("日计划缺失");
+  });
+
   function reportFile(name: string, csv: string): File {
     const file = new File([csv], name, { type: "text/csv" });
     Object.defineProperty(file, "arrayBuffer", { value: async () => new TextEncoder().encode(csv).buffer });
@@ -365,7 +402,8 @@ describe("Santa Ops daily operating flow", () => {
     fireEvent.change(input, { target: { files: [reportFile("sample-ad-report.csv", adCsv)] } });
     await screen.findByText("报告类型: 广告");
     fireEvent.click(screen.getByRole("button", { name: "保存导入" }));
-    await waitFor(() => expect(screen.getByText(/实际 51 件/)).toBeTruthy());
+    const salesChart = screen.getByRole("heading", { name: "计划销量 vs 实际销量" }).closest("section")!;
+    await waitFor(() => expect(within(salesChart).getByText(/实际 51 件/)).toBeTruthy());
     expect(screen.getByRole("img", { name: "广告花费 / ACOS折线图" }).textContent).not.toContain("726");
   });
 

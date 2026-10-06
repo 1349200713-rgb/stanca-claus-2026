@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ServerImportBatch, UpsertResult } from "../../db/ops-repository";
 import type { CompetitorSnapshot } from "../domain/linkage";
 import { parseCompetitorReport } from "../import/competitor-parser";
@@ -33,13 +33,18 @@ export function CompetitorPage({ repository = defaultRepository, onBack }: { rep
   const [editingId, setEditingId] = useState("");
   const [editDraft, setEditDraft] = useState<CompetitorEditDraft | null>(null);
   const [editBusy, setEditBusy] = useState(false);
-  const refresh = () => repository.list("competitors", { marketplace: "US" }).then(setRows).catch((error) => setMessage(error instanceof Error ? error.message : "无法读取竞品数据"));
+  const refresh = () => repository.list("competitors", { marketplace: "US" }).then((nextRows) => { setRows(nextRows); return null; }).catch((error) => {
+    const detail = error instanceof Error ? error.message : "无法读取竞品数据";
+    setMessage(detail);
+    return detail;
+  });
   useEffect(() => { void refresh(); }, []);
   const latestDate = rows.reduce((latest, row) => row.date > latest ? row.date : latest, "");
   const analytics = useMemo(() => buildCompetitorAnalytics(rows, latestDate || "9999-12-31"), [rows, latestDate]);
   const competitorOptions = useMemo(() => [...new Map(rows.map((row) => [row.competitorAsin, `${row.brand ?? row.competitorAsin}${row.isOwnProduct ? "（自有）" : ""}`])).entries()], [rows]);
   const sizeOptions = useMemo(() => [...new Set(rows.map((row) => row.size).filter((size): size is string => Boolean(size)))], [rows]);
   const filteredRows = useMemo(() => rows.filter((row) => (!dateFilter || row.date === dateFilter) && (!asinFilter || row.competitorAsin === asinFilter) && (!sizeFilter || row.size === sizeFilter)).toSorted((a, b) => b.date.localeCompare(a.date) || a.competitorAsin.localeCompare(b.competitorAsin) || (a.size ?? "").localeCompare(b.size ?? "")), [rows, dateFilter, asinFilter, sizeFilter]);
+  const editingRow = rows.find((row) => row.id === editingId);
   const chartRows = useMemo(() => {
     const byDate = new Map<string, CompetitorSnapshot[]>();
     filteredRows.forEach((row) => byDate.set(row.date, [...(byDate.get(row.date) ?? []), row]));
@@ -65,22 +70,29 @@ export function CompetitorPage({ repository = defaultRepository, onBack }: { rep
   }
 
   function beginEdit(row: CompetitorSnapshot) {
+    if (editBusy) return;
     setEditingId(row.id);
     setEditDraft(competitorDraft(row));
     setMessage("");
   }
 
   async function saveEdit(row: CompetitorSnapshot) {
-    if (!editDraft) return;
+    if (!editDraft || editBusy) return;
     setEditBusy(true);
     try {
       const record = competitorRecord(row, editDraft);
+      if (record === row) {
+        setEditingId("");
+        setEditDraft(null);
+        setMessage("未修改任何内容，原记录保持不变");
+        return;
+      }
       const now = new Date().toISOString();
       await repository.upsertBatch("competitors", [record], { id: `competitor-edit:${row.id}:${now}`, filename: "页面手动编辑", importedAt: now, source: "manual-edit" });
       setEditingId("");
       setEditDraft(null);
-      await refresh();
-      setMessage("竞品记录已更新");
+      const refreshError = await refresh();
+      setMessage(refreshError ? `竞品记录已保存，但刷新失败：${refreshError}。请刷新页面核对，不要重复保存。` : "竞品记录已更新");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "竞品记录保存失败");
     } finally {
@@ -89,6 +101,7 @@ export function CompetitorPage({ repository = defaultRepository, onBack }: { rep
   }
 
   async function removeRow(row: CompetitorSnapshot) {
+    if (editBusy) return;
     if (!window.confirm(`确认删除 ${row.brand ?? row.competitorAsin} / ${row.size ?? "无尺码"} / ${row.date}？`)) return;
     setEditBusy(true);
     try {
@@ -128,7 +141,8 @@ export function CompetitorPage({ repository = defaultRepository, onBack }: { rep
     <section className="panel promotion-table-panel"><div className="panel-heading"><div><p className="eyebrow">IMPORT & DETAIL</p><h2>竞品每日明细</h2></div><label className="secondary-button" htmlFor="competitor-file">上传竞品数据</label></div>
       <input id="competitor-file" className="sr-only" aria-label="上传竞品数据" type="file" accept=".csv,.xlsx,.xls" onChange={(event) => void upload(event.currentTarget.files?.[0])} />
       {message ? <p role="status">{message}</p> : null}{issues.length ? <ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : null}
-      <div className="table-scroll competitor-detail-table"><table aria-label="竞品每日明细"><thead><tr><th>日期</th><th>类型</th><th>品牌 / ASIN</th><th>尺码</th><th>页面售价</th><th>优惠后价格</th><th>Coupon</th><th>CODE</th><th>Prime Savings</th><th>评分</th><th>大类排名</th><th>小类排名</th><th>颜色/款式</th><th>备注</th><th>链接</th><th>操作</th></tr></thead><tbody>{filteredRows.map((row) => <Fragment key={row.id}><tr className={row.isOwnProduct ? "competitor-own-row" : undefined}><th>{row.date}</th><td>{row.isOwnProduct ? "自有基准" : "竞品"}</td><td><strong>{row.brand ?? "—"}</strong><br />{row.competitorAsin}{row.productName ? <><br /><span>{row.productName}</span></> : null}</td><td>{row.size ?? "—"}</td><td>{money(row.price)}</td><td>{money(row.effectivePrice)}</td><td>{row.couponPercent != null ? `${row.couponPercent}%` : row.couponAmount != null ? money(row.couponAmount) : "—"}</td><td>{value(row.codePercent, "%")}</td><td>{row.primeSavings || "—"}</td><td>{value(row.rating)}</td><td>{value(row.categoryRank)}</td><td>{value(row.subcategoryRank ?? row.bsrRank)}</td><td>{row.colorStyle || "—"}</td><td>{row.note || "—"}</td><td>{row.source ? <a href={row.source} target="_blank" rel="noreferrer">打开</a> : "—"}</td><td><div className="table-action-group"><button type="button" className="table-action-button" aria-label={`编辑 ${row.brand ?? row.competitorAsin} ${row.size ?? "无尺码"} ${row.date}`} onClick={() => beginEdit(row)}>编辑</button><button type="button" className="table-action-button table-action-button--danger" aria-label={`删除 ${row.brand ?? row.competitorAsin} ${row.size ?? "无尺码"} ${row.date}`} onClick={() => void removeRow(row)}>删除</button></div></td></tr>{editingId === row.id && editDraft ? <CompetitorEditRow row={row} draft={editDraft} busy={editBusy} onChange={setEditDraft} onSave={() => void saveEdit(row)} onCancel={() => { setEditingId(""); setEditDraft(null); }} /> : null}</Fragment>)}</tbody></table></div>
+      {editingRow && editDraft ? <CompetitorEditRow row={editingRow} draft={editDraft} busy={editBusy} onChange={setEditDraft} onSave={() => void saveEdit(editingRow)} onCancel={() => { setEditingId(""); setEditDraft(null); }} /> : null}
+      <div className="table-scroll competitor-detail-table"><table aria-label="竞品每日明细"><thead><tr><th className="competitor-manual-action">手动修改</th><th>日期</th><th>类型</th><th>品牌 / ASIN</th><th>尺码</th><th>页面售价</th><th>优惠后价格</th><th>Coupon</th><th>CODE</th><th>Prime Savings</th><th>评分</th><th>大类排名</th><th>小类排名</th><th>颜色/款式</th><th>备注</th><th>链接</th><th>操作</th></tr></thead><tbody>{filteredRows.map((row) => <tr key={row.id} className={row.isOwnProduct ? "competitor-own-row" : undefined}><td className="competitor-manual-action"><button type="button" className="table-action-button competitor-manual-edit-button" disabled={editBusy} aria-label={`手动修改 ${row.brand ?? row.competitorAsin} ${row.size ?? "无尺码"} ${row.date}`} onClick={() => beginEdit(row)}>手动修改</button></td><th>{row.date}</th><td>{row.isOwnProduct ? "自有基准" : "竞品"}</td><td><strong>{row.brand ?? "—"}</strong><br />{row.competitorAsin}{row.productName ? <><br /><span>{row.productName}</span></> : null}</td><td>{row.size ?? "—"}</td><td>{money(row.price)}</td><td>{money(row.effectivePrice)}</td><td>{row.couponPercent != null ? `${row.couponPercent}%` : row.couponAmount != null ? money(row.couponAmount) : "—"}</td><td>{value(row.codePercent, "%")}</td><td>{row.primeSavings || "—"}</td><td>{value(row.rating)}</td><td>{value(row.categoryRank)}</td><td>{value(row.subcategoryRank ?? row.bsrRank)}</td><td>{row.colorStyle || "—"}</td><td>{row.note || "—"}</td><td>{row.source ? <a href={row.source} target="_blank" rel="noreferrer">打开</a> : "—"}</td><td><div className="table-action-group"><button type="button" className="table-action-button table-action-button--danger" disabled={editBusy} aria-label={`删除 ${row.brand ?? row.competitorAsin} ${row.size ?? "无尺码"} ${row.date}`} onClick={() => void removeRow(row)}>删除</button></div></td></tr>)}</tbody></table></div>
     </section>
     <section className="panel"><div className="panel-heading"><div><p className="eyebrow">ALERTS</p><h2>竞品动态提醒</h2></div></div>{analytics.alerts.length ? <ul className="action-list">{analytics.alerts.map((alert) => <li key={alert.id} className={alert.severity === "risk" ? "status-risk" : "status-attention"}><strong>{alert.competitorAsin}</strong><span>{alert.detail}</span></li>)}</ul> : <p>暂无竞品异常。</p>}</section>
   </main>;

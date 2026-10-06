@@ -61,8 +61,12 @@ export interface KeywordRankSnapshot {
   keyword: string;
   asin: string;
   organicRank: number | null;
+  organicPage?: number | null;
+  organicPosition?: number | null;
   abaRank?: number | null;
   adRank: number | null;
+  adPage?: number | null;
+  adPosition?: number | null;
   organicStatus: RankStatus;
   adStatus: RankStatus;
   competitorAsin?: string;

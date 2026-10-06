@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import Dashboard from "../../app/page";
 import { ActionList } from "../../src/components/ActionList";
 import { configureOpsDbForTests, opsDb, resetOpsDbForTests } from "../../src/storage/db";
@@ -8,11 +8,131 @@ import { createMemoryIdbFactory } from "../storage/memory-idb";
 
 afterEach(async () => {
   cleanup();
+  vi.restoreAllMocks();
   history.replaceState(null, "", "/");
   await resetOpsDbForTests();
 });
 
 describe("Santa Ops dashboard", () => {
+  test("editing a dashboard ad preserves one record and refreshes KPI totals and anomalies", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    const original = { key: "ads:edit-original", date: "2026-10-04", campaign: "Waste", spend: 30, adSales: 0, adOrders: 0, clicks: 25, impressions: 2000 };
+    await opsDb.insert("ads", [original]);
+    history.replaceState(null, "", "/?page=advertising-dashboard");
+    render(<Dashboard />);
+    const edit = await screen.findByRole("button", { name: "手动修改广告 Waste 2026-10-04" });
+    fireEvent.click(edit);
+    await screen.findByRole("heading", { name: "手动修改广告数据" });
+    fireEvent.change(screen.getByLabelText("广告花费（USD）"), { target: { value: "999" } });
+    fireEvent.click(screen.getByRole("button", { name: "取消修改" }));
+    expect(screen.queryByRole("heading", { name: "手动修改广告数据" })).toBeNull();
+    expect(await opsDb.list("ads")).toEqual([original]);
+    fireEvent.click(screen.getByRole("button", { name: "手动修改广告 Waste 2026-10-04" }));
+    fireEvent.change(screen.getByLabelText("广告花费（USD）"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("广告销售额（USD）"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText("广告订单（单）"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /确认覆盖/ }));
+    fireEvent.click(screen.getByRole("button", { name: "保存广告数据" }));
+    await waitFor(() => expect(screen.getByLabelText("总成本指标").textContent).toContain("US$1.00"));
+    expect(screen.getByText("当前筛选下没有表现异常。")).toBeTruthy();
+    expect(await opsDb.list("ads")).toMatchObject([{ key: original.key, spend: 1, adSales: 100, adOrders: 5 }]);
+    expect(await opsDb.list("ads")).toHaveLength(1);
+  });
+
+  test("opens the standalone advertising dashboard with import and manual entry from navigation", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    await opsDb.insert("ads", [{ key: "ads:latest", date: "2026-10-04", campaign: "Latest campaign", spend: 20, adSales: 0, adOrders: 0, clicks: 25, impressions: 2000 }]);
+    render(<Dashboard />);
+    fireEvent.click(screen.getByRole("button", { name: "广告数据看板" }));
+    expect(await screen.findByRole("heading", { name: "广告数据看板", level: 1 })).toBeTruthy();
+    const adDetails = await screen.findByRole("table", { name: "广告记录明细" });
+    expect(within(adDetails).getByRole("rowheader", { name: "Latest campaign" })).toBeTruthy();
+    expect(new URLSearchParams(location.search).get("page")).toBe("advertising-dashboard");
+    fireEvent.click(screen.getByRole("button", { name: "手动录入广告" }));
+    expect(await screen.findByRole("heading", { name: "手动录入广告数据" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "导入广告报告" }));
+    expect((await screen.findByLabelText("报告类型" ) as HTMLSelectElement).value).toBe("ads");
+  });
+
+  test("restores the advertising dashboard from its direct URL", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    history.replaceState(null, "", "/?page=advertising-dashboard");
+    render(<Dashboard />);
+    expect(await screen.findByRole("heading", { name: "广告数据看板", level: 1 })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "计划销量 vs 实际销量" })).toBeNull();
+  });
+
+  test("does not mistake a failed advertising read for an empty advertising database", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    const list = opsDb.list.bind(opsDb);
+    vi.spyOn(opsDb, "list").mockImplementation((table) => table === "ads" ? Promise.reject(new Error("广告接口离线")) : list(table));
+    history.replaceState(null, "", "/?page=advertising-dashboard");
+    render(<Dashboard />);
+    await screen.findByText(/广告接口离线/);
+    expect(screen.queryByText(/尚未导入广告/)).toBeNull();
+  });
+
+  test("shows the saved plan source and exact KPI day separately from the chart interval", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    history.replaceState(null, "", "/?startDate=2026-10-02&endDate=2026-10-03&size=XL");
+    await opsDb.insert("activePlan", [{ key: "active-plan", id: "plan-2026", totalUnits: 50, updatedAt: "2026-10-05T00:00:00Z", rows: [
+      { date: "2026-10-02", size: "XL", units: 20 }, { date: "2026-10-03", size: "XL", units: 30 },
+    ] }]);
+    await opsDb.insert("business", [{ key: "xl-day", date: "2026-10-02", sku: "XL", asin: "", size: "XL", units: 15, sales: 750 }]);
+    render(<Dashboard />);
+    const summary = await screen.findByRole("group", { name: "趋势销量摘要" });
+    await waitFor(() => expect(summary.textContent).toContain("15 件"));
+    expect(summary.textContent).toContain("20 件");
+    expect(summary.textContent).toContain("落后 5 件");
+    expect(screen.getByText(/图表区间：2026-10-02 至 2026-10-03 · XL/)).toBeTruthy();
+    expect(screen.getByText(/摘要口径：2026-10-02 单日/)).toBeTruthy();
+    const chart = screen.getByRole("heading", { name: "计划销量 vs 实际销量" }).closest("section")!;
+    expect(chart.textContent).toContain("已保存日度计划");
+    expect(chart.textContent).not.toContain("按权威尺码总量比例缩放");
+    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("销量完成率").closest("article")?.textContent).toContain("2026-10-02");
+    fireEvent.click(screen.getByRole("radio", { name: "累计" }));
+    await waitFor(() => expect(summary.textContent).toContain("数据不全"));
+    expect(summary.textContent).not.toContain("落后 35 件");
+  });
+
+  test("manual advertising refreshes the advertising KPI and saves campaign-level metrics", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    render(<Dashboard />);
+    fireEvent.click(screen.getByRole("button", { name: "手动录入广告" }));
+    await screen.findByRole("heading", { name: "手动录入广告数据" });
+    fireEvent.change(screen.getByLabelText("广告日期"), { target: { value: "2026-10-04" } });
+    fireEvent.change(screen.getByLabelText("广告活动名称"), { target: { value: "XL santa costume exact" } });
+    fireEvent.change(screen.getByLabelText("广告ASIN（选填）"), { target: { value: "B0CFPR34MH" } });
+    fireEvent.change(screen.getByLabelText("广告花费（USD）"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("广告销售额（USD）"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText("广告订单（单）"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("点击量（选填）"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("展示量（选填）"), { target: { value: "1000" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存广告数据" }));
+    await screen.findByText(/广告数据已保存/);
+    expect(await opsDb.list("ads")).toMatchObject([{ date: "2026-10-04", campaign: "XL santa costume exact", asin: "B0CFPR34MH", sku: "A022-XXX-09-0B500", spend: 20, adSales: 100, adOrders: 2, clicks: 10, impressions: 1000, cpc: 2, ctr: 0.01, cvr: 0.2 }]);
+    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("US$20 · 20.0%")).toBeTruthy();
+    const salesKpi = within(screen.getByRole("region", { name: "核心指标" })).getByText("销量完成率").closest("article")!;
+    expect(salesKpi.textContent).toContain("尚未录入销量");
+    expect(salesKpi.textContent).not.toContain("已录入 0 件");
+  });
+
+  test("manual sales immediately refreshes size totals and the sales KPI", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    render(<Dashboard />);
+    await waitFor(() => expect((screen.getByRole("button", { name: "保存销量" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText("销售日期"), { target: { value: "2026-10-04" } });
+    fireEvent.change(screen.getByLabelText("销售ASIN"), { target: { value: "B0CFPR34MH" } });
+    fireEvent.change(screen.getByLabelText("销量（件）"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("销售额（USD）"), { target: { value: "400" } });
+    fireEvent.change(screen.getByLabelText("售价（USD / 件）"), { target: { value: "59.99" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存销量" }));
+    await screen.findByText(/2026-10-04 · XL 已保存/);
+    expect(screen.getByRole("table", { name: "当日销量录入记录" }).textContent).toContain("US$400.00");
+    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("US$400")).toBeTruthy();
+    expect((screen.getByLabelText("对比日期") as HTMLInputElement).value).toBe("2026-10-04");
+  });
+
   test("shows the latest business day for all sizes on the home page and links to the saved daily plan", async () => {
     configureOpsDbForTests(createMemoryIdbFactory());
     history.replaceState(null, "", "/?size=XL&endDate=2026-11-26");
@@ -45,7 +165,7 @@ describe("Santa Ops dashboard", () => {
     render(<Dashboard />);
 
     const navigation = screen.getByRole("navigation", { name: "经营模块导航" });
-    expect(within(navigation).getAllByRole("button").map((button) => button.textContent)).toEqual(["经营驾驶舱", "计划与库存", "广告推广", "推广复盘图表", "关键词排名", "竞品跟踪", "每日操作"]);
+    expect(within(navigation).getAllByRole("button").map((button) => button.textContent)).toEqual(["经营驾驶舱", "计划与库存", "广告推广", "广告数据看板", "推广复盘图表", "关键词排名", "竞品跟踪", "每日操作"]);
     expect(within(navigation).getByRole("button", { name: "经营驾驶舱" }).getAttribute("aria-current")).toBe("page");
 
     expect(screen.getByRole("heading", { name: "计划销量 vs 实际销量" })).toBeTruthy();

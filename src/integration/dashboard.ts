@@ -25,6 +25,12 @@ export interface DerivedPlanRow {
 export interface DashboardSeriesRow extends MetricSnapshot {
   date: string;
   dataGaps: string[];
+  rangeStartDate: string;
+  rangeEndDate: string;
+  observedUnits: number;
+  observedSizeDays: number;
+  expectedSizeDays: number;
+  planDataComplete: boolean;
 }
 
 export interface DashboardSeriesInput {
@@ -62,7 +68,7 @@ export function trendIsDeteriorating(
 
 export function selectDashboardSnapshot(rows: readonly DashboardSeriesRow[], mode: DashboardMode): DashboardSeriesRow | undefined {
   return mode === "daily"
-    ? rows.toReversed().find((row) => row.actualUnits !== null || row.adSpend !== null) ?? rows.at(-1)
+    ? rows.toReversed().find((row) => row.sales !== null || row.adSpend !== null) ?? rows.at(-1)
     : rows.at(-1);
 }
 
@@ -124,6 +130,7 @@ function campaignSize(campaign: string, plan: PlanModel): SizeCode | undefined {
 
 interface Bucket {
   date: string;
+  sourceStartDate: string;
   sourceEndDate: string;
   sizes: SizeCode[];
   plan: DerivedPlanRow[];
@@ -213,7 +220,23 @@ function toInput(bucket: Bucket, plan: PlanModel, projection: ProjectionContext)
 
 function calculateBucket(bucket: Bucket, plan: PlanModel, projection: ProjectionContext): DashboardSeriesRow {
   const { input, dataGaps } = toInput(bucket, plan, projection);
-  return { date: bucket.date, ...calculateMetrics(input), dataGaps };
+  const expectedSizeDays = datesBetween(bucket.sourceStartDate, bucket.sourceEndDate).length * bucket.sizes.length;
+  const observedSizeDays = new Set(bucket.business.map((row) => `${row.date}:${row.size}`)).size;
+  const plannedSizeDays = new Set(bucket.plan.map((row) => `${row.date}:${row.size}`)).size;
+  const actualComplete = expectedSizeDays > 0 && observedSizeDays === expectedSizeDays;
+  const planDataComplete = expectedSizeDays > 0 && plannedSizeDays === expectedSizeDays;
+  if (observedSizeDays < expectedSizeDays) dataGaps.push(`销量缺失 ${expectedSizeDays - observedSizeDays} 个日期×尺码`);
+  if (!planDataComplete) dataGaps.push("日计划缺失");
+  const metrics = calculateMetrics(input);
+  return {
+    date: bucket.date, ...metrics,
+    actualUnits: actualComplete ? metrics.actualUnits : null,
+    completionRate: actualComplete && planDataComplete ? metrics.completionRate : null,
+    unitVariance: actualComplete && planDataComplete ? metrics.unitVariance : null,
+    rangeStartDate: bucket.sourceStartDate, rangeEndDate: bucket.sourceEndDate,
+    observedUnits: input.actualUnits ?? 0, observedSizeDays, expectedSizeDays, planDataComplete,
+    dataGaps,
+  };
 }
 
 export function buildDashboardSeries(input: DashboardSeriesInput): DashboardSeriesRow[] {
@@ -231,6 +254,7 @@ export function buildDashboardSeries(input: DashboardSeriesInput): DashboardSeri
   const projection = { plan: allDerived, manual: allManual };
   const daily = days.map<Bucket>((date) => ({
     date,
+    sourceStartDate: date,
     sourceEndDate: date,
     sizes: [...allowed],
     plan: derived.filter((row) => row.date === date),
@@ -244,7 +268,7 @@ export function buildDashboardSeries(input: DashboardSeriesInput): DashboardSeri
     const buckets = new Map<string, Bucket>();
     for (const day of daily) {
       const key = monday(day.date);
-      const bucket = buckets.get(key) ?? { date: key, sourceEndDate: day.sourceEndDate, sizes: day.sizes, plan: [], business: [], ads: [], manual: [] };
+      const bucket = buckets.get(key) ?? { date: key, sourceStartDate: day.sourceStartDate, sourceEndDate: day.sourceEndDate, sizes: day.sizes, plan: [], business: [], ads: [], manual: [] };
       bucket.sourceEndDate = day.sourceEndDate;
       bucket.plan.push(...day.plan);
       bucket.business.push(...day.business);
@@ -255,7 +279,7 @@ export function buildDashboardSeries(input: DashboardSeriesInput): DashboardSeri
     return [...buckets.values()].map((bucket) => calculateBucket(bucket, input.plan, projection));
   }
 
-  const cumulative: Bucket = { date: "", sourceEndDate: "", sizes: [...allowed], plan: [], business: [], ads: [], manual: [] };
+  const cumulative: Bucket = { date: "", sourceStartDate: input.startDate, sourceEndDate: "", sizes: [...allowed], plan: [], business: [], ads: [], manual: [] };
   return daily.map((day) => {
     cumulative.date = day.date;
     cumulative.sourceEndDate = day.sourceEndDate;

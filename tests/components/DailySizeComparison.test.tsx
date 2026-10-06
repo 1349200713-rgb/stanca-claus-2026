@@ -77,3 +77,25 @@ test("offers a review action for a below-plan size without creating an operation
   }]);
   expect(screen.getByRole("table", { name: "每日尺码销量对比" })).toBeTruthy();
 });
+
+test("makes the single-day actual and plan totals explicit without judging partial sales", () => {
+  render(<DailySizeComparison plan={plan} activePlan={activePlan} loaded fallbackDate="2026-10-02"
+    business={[business("2026-10-02", "L", 12)]} onOpenPlan={() => undefined} />);
+  const summary = screen.getByRole("group", { name: "单日销量摘要" });
+  expect(within(summary).getByText("实际销量").closest("div")?.textContent).toContain("数据不全");
+  expect(within(summary).getByText("计划销量").closest("div")?.textContent).toContain("50 件");
+  expect(summary.textContent).toContain("已录入 12 件");
+  expect(summary.textContent).not.toContain("落后 38 件");
+  expect(screen.getByText(/单日对比：2026-10-02/)).toBeTruthy();
+});
+
+test("explains how many units are behind plan when all sizes are recorded", () => {
+  render(<DailySizeComparison plan={plan} activePlan={activePlan} loaded fallbackDate="2026-10-02"
+    business={[business("2026-10-02", "L", 12), business("2026-10-02", "XL", 20), business("2026-10-02", "2XL", 10), business("2026-10-02", "3XL", 0)]}
+    onOpenPlan={() => undefined} />);
+  const summary = screen.getByRole("group", { name: "单日销量摘要" });
+  expect(summary.textContent).toContain("42 件");
+  expect(summary.textContent).toContain("50 件");
+  expect(summary.textContent).toContain("落后 8 件");
+  expect(summary.textContent).toContain("84%");
+});

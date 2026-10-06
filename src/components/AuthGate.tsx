@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { migrateLocalDataToServer } from "../storage/db";
+import { OperationPasswordDialog } from "./OperationPasswordDialog";
 
 declare global {
   interface ImportMeta {
@@ -15,15 +16,19 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [migrationMessage, setMigrationMessage] = useState("");
+  const [localPasswordless, setLocalPasswordless] = useState(false);
 
   useEffect(() => {
     if (import.meta.env?.MODE === "test") {
       setState("ready");
       return;
     }
-    fetch("/api/auth/session", { credentials: "same-origin" })
-      .then((response) => response.json() as Promise<{ authenticated: boolean }>)
-      .then((result) => setState(result.authenticated ? "ready" : "login"))
+    fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store" })
+      .then((response) => response.json() as Promise<{ authenticated: boolean; localPasswordless?: boolean }>)
+      .then((result) => {
+        setLocalPasswordless(result.localPasswordless === true);
+        setState(result.authenticated ? "ready" : "login");
+      })
       .catch(() => setState("login"));
   }, []);
 
@@ -67,7 +72,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setState("login");
   }
 
-  if (state === "ready") return <><div className="auth-toolbar"><button onClick={migrate} disabled={busy}>上传本机数据</button><button onClick={() => window.location.reload()}>刷新数据</button><button onClick={logout}>退出登录</button>{migrationMessage ? <span role="status">{migrationMessage}</span> : null}</div>{children}</>;
+  if (state === "ready") return <><div className="auth-toolbar"><button onClick={migrate} disabled={busy}>上传本机数据</button><button onClick={() => window.location.reload()}>刷新数据</button>{localPasswordless ? <span>本地免登录 · 保存仍需操作密码</span> : <button onClick={logout}>退出登录</button>}{migrationMessage ? <span role="status">{migrationMessage}</span> : null}</div>{children}<OperationPasswordDialog /></>;
   return (
     <main className="auth-shell">
       <form className="auth-panel" onSubmit={submit}>

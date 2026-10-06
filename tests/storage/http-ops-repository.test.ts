@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createHttpOpsRepository } from "../../src/storage/http-ops-repository";
+import { registerOperationAuthorizationDialog } from "../../src/storage/operation-authorization";
 
-afterEach(() => vi.unstubAllGlobals());
+let closeDialog: (() => void) | undefined;
+afterEach(() => { closeDialog?.(); closeDialog = undefined; vi.unstubAllGlobals(); });
+
+function authorizeThroughDialog() {
+  closeDialog = registerOperationAuthorizationDialog((request) => {
+    if (request) void request.verify("write-password").then(request.complete, request.cancel);
+  });
+}
 
 describe("HTTP operations repository", () => {
   test("serializes filters and reads records", async () => {
@@ -24,7 +32,8 @@ describe("HTTP operations repository", () => {
   });
 
   test("asks for the operation password and retries an upload rejected with 428", async () => {
-    vi.stubGlobal("window", { location: { origin: "http://shared.test" }, prompt: () => "write-password" });
+    vi.stubGlobal("window", { location: { origin: "http://shared.test" }, prompt: () => { throw new Error("prompt() is not supported"); } });
+    authorizeThroughDialog();
     const requests: Request[] = [];
     const repository = createHttpOpsRepository({
       fetch: async (input) => {
@@ -44,10 +53,12 @@ describe("HTTP operations repository", () => {
       "/api/auth/operation",
       "/api/ops/competitors",
     ]);
+    expect(await requests[1].json()).toEqual({ password: "write-password" });
   });
 
   test("uses the same operation unlock flow when deleting a record", async () => {
-    vi.stubGlobal("window", { location: { origin: "http://shared.test" }, prompt: () => "write-password" });
+    vi.stubGlobal("window", { location: { origin: "http://shared.test" }, prompt: () => { throw new Error("prompt() is not supported"); } });
+    authorizeThroughDialog();
     const requests: Request[] = [];
     const repository = createHttpOpsRepository({ fetch: async (input) => {
       const request = input as Request;

@@ -2,6 +2,7 @@ import type { AdRecord, BusinessRecord, ManualRecord, SizeCode } from "../domain
 import type { ActivePlan, DailyOperationRecord, InboundEntry, InventorySnapshot, PlanChange, PromotionPlanOverride } from "../domain/planning";
 
 import { decodeData, encodeData, storeNames, type OpsStore, type WriteOperation, type WriteResult } from "./protocol";
+import { requestOperationAuthorization } from "./operation-authorization";
 export type { OpsStore } from "./protocol";
 type FormalStore = "business" | "ads" | "inventory";
 
@@ -127,10 +128,10 @@ function usesServer(): boolean {
   return typeof window !== "undefined" && !localTestAdapter;
 }
 
-async function remoteRequest<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+async function remoteRequest<T>(input: RequestInfo | URL, init?: RequestInit, reloadOnUnauthorized = true): Promise<T> {
   const response = await fetch(input, { credentials: "same-origin", cache: "no-store", ...init });
   if (!response.ok) {
-    if (response.status === 401) window.location.reload();
+    if (response.status === 401 && reloadOnUnauthorized) window.location.reload();
     const body = await response.json().catch(() => ({})) as { error?: string };
     const error = new Error(body.error ?? `服务器请求失败（${response.status}）`);
     (error as Error & { status?: number }).status = response.status;
@@ -148,15 +149,16 @@ function remoteWrite(store: OpsStore, records: readonly unknown[], mode: "insert
 }
 
 function remoteBatch(operations: WriteOperation[]): Promise<WriteResult> {
-  const request = () => remoteRequest<WriteResult>("/api/data", { method: "POST", headers: { "content-type": "application/json" }, body: encodeData({ operations }) });
+  const body = encodeData({ operations });
+  const request = () => remoteRequest<WriteResult>("/api/data", { method: "POST", headers: { "content-type": "application/json" }, body });
   return request().catch(async (error: Error & { status?: number }) => {
     if (error.status !== 428 || typeof window === "undefined") throw error;
-    const password = window.prompt("请输入操作密码");
-    if (!password) throw new Error("取消操作");
-    await remoteRequest("/api/auth/operation", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ password }),
+    await requestOperationAuthorization(async (password) => {
+      await remoteRequest("/api/auth/operation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password }),
+      }, false);
     });
     return request();
   });

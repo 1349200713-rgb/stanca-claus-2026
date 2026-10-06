@@ -28,6 +28,19 @@ afterEach(async () => {
 });
 
 describe("ImportPanel", () => {
+  test("re-previews a native campaign export after the user supplies its single-day report date", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    await preview("export.csv", "广告活动名称,广告活动开始日期,展示量,点击量,总成本,销售额,购买量,ACOS,ROAS,转化率,搜索结果首页首位展示量份额,是否调整\nSanta,2024-11-21,1000,10,US$12,US$60,2,20%,5,20%,12.5%,是");
+    expect(screen.getByText("报告类型: 广告")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "保存导入" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("广告报表日期"), { target: { value: "2026-10-04" } });
+    await screen.findByText("有效行: 1");
+    fireEvent.click(screen.getByRole("button", { name: "保存导入" }));
+    await screen.findByText("导入已保存");
+    expect(await opsDb.list("ads")).toMatchObject([{ date: "2026-10-04", campaign: "Santa", spend: 12, adSales: 60, adOrders: 2, acos: 0.2, roas: 5, cvr: 0.2, topOfSearchImpressionShare: 0.125, adjusted: true }]);
+    expect(await opsDb.list("business")).toEqual([]);
+  });
+
   test("disables saving a report with missing required columns and writes nothing", async () => {
     configureOpsDbForTests(createMemoryIdbFactory());
     await preview("business.csv", "Date,SKU,Units\n2026-11-24,A022,8");

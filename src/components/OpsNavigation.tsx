@@ -1,9 +1,10 @@
-export type OpsPage = "dashboard" | "plan-inventory" | "promotion" | "promotion-review" | "daily-operations" | "competitors" | "keywords";
+export type OpsPage = "dashboard" | "plan-inventory" | "promotion" | "advertising-dashboard" | "promotion-review" | "daily-operations" | "competitors" | "keywords";
 
 const items: Array<{ page: OpsPage; label: string }> = [
   { page: "dashboard", label: "经营驾驶舱" },
   { page: "plan-inventory", label: "计划与库存" },
   { page: "promotion", label: "广告推广" },
+  { page: "advertising-dashboard", label: "广告数据看板" },
   { page: "promotion-review", label: "推广复盘图表" },
   { page: "keywords", label: "关键词排名" },
   { page: "competitors", label: "竞品跟踪" },
