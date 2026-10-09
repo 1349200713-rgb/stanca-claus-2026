@@ -58,6 +58,7 @@ export interface AdRecord {
   roas?: number;
   topOfSearchImpressionShare?: number;
   adjusted?: boolean;
+  adjustmentRecord?: { date: string; content: string; note?: string };
   source?: "manual";
   updatedAt?: string;
 }

@@ -25,7 +25,7 @@ test("shows date activity actual threshold severity and actionable reason for an
   expect(table.textContent).toContain("高");
   const detail = screen.getByRole("table", { name: "广告记录明细" });
   expect(detail.textContent).toContain("12.30%");
-  expect(detail.textContent).toContain("是否调整");
+  expect(detail.textContent).toContain("调整记录");
   expect(detail.textContent).toContain("ROAS");
   expect(detail.textContent).toContain("广告转化率");
 });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isLocalPasswordlessRequest } from "../../../src/server/local-access";
 import { batchWrite, isValidOperationSession, isValidSession, listRecords } from "../../../src/server/store";
 import type { WriteOperation } from "../../../src/storage/protocol";
 
@@ -13,7 +14,7 @@ function authorized(request: Request): boolean {
 }
 
 function operationAuthorized(request: Request): boolean {
-  return isValidOperationSession(request.headers.get("cookie")?.match(/(?:^|;\s*)santa_ops_write=([^;]+)/)?.[1]);
+  return isLocalPasswordlessRequest(request) || isValidOperationSession(request.headers.get("cookie")?.match(/(?:^|;\s*)santa_ops_write=([^;]+)/)?.[1]);
 }
 
 export async function GET(request: Request) {

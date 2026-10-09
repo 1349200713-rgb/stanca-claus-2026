@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { isLocalPasswordlessRequest } from "./local-access";
 import { isValidOperationSession, isValidSession } from "./store";
 
 function sameSecret(actual: string, expected: string): boolean {
@@ -30,6 +31,7 @@ export function isAuthorizedOpsRequest(request: Request): boolean {
 export function opsWriteAuthorizationError(request: Request): Response | undefined {
   if (hasServiceAuthorization(request)) return undefined;
   if (!isValidSession(cookie(request, "santa_ops_session"))) return unauthorizedResponse();
+  if (isLocalPasswordlessRequest(request)) return undefined;
   if (!isValidOperationSession(cookie(request, "santa_ops_write"))) {
     return Response.json({ error: "需要操作密码" }, { status: 428 });
   }

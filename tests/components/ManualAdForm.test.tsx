@@ -26,15 +26,34 @@ test("records search placement share and adjustment status and preserves unknown
   vi.stubGlobal("crypto", undefined);
   form();
   fireEvent.change(screen.getByLabelText("搜索首页首位展示份额（%）"), { target: { value: "12.5" } });
-  fireEvent.change(screen.getByLabelText("是否调整"), { target: { value: "no" } });
   fireEvent.click(screen.getByRole("button", { name: "保存广告数据" }));
   await screen.findByText(/广告数据已保存/);
   const rows = await opsDb.list("ads");
-  expect(rows).toMatchObject([{ spend: 20, adSales: 100, adOrders: 2, acos: 0.2, roas: 5, topOfSearchImpressionShare: 0.125, adjusted: false }]);
+  expect(rows).toMatchObject([{ spend: 20, adSales: 100, adOrders: 2, acos: 0.2, roas: 5, topOfSearchImpressionShare: 0.125 }]);
+  expect(rows[0].adjusted).toBeUndefined();
   expect(rows[0].clicks).toBeUndefined();
   expect(rows[0].impressions).toBeUndefined();
   expect(rows[0].cpc).toBeUndefined();
   expect(rows[0].cvr).toBeUndefined();
+});
+
+test("saves and reloads a manual adjustment record without changing campaign metrics or duplicating its row", async () => {
+  await opsDb.insert("ads", [old]);
+  const props = { mappings: plan.primaryMappings, records: [old], loaded: true, onSaved: () => undefined, initialRecord: old };
+  render(<ManualAdForm {...props} />);
+  fireEvent.change(screen.getByLabelText("调整日期"), { target: { value: "2026-10-08" } });
+  fireEvent.change(screen.getByLabelText("调整内容"), { target: { value: "预算由5美元改为8美元，竞价改为固定" } });
+  fireEvent.change(screen.getByLabelText("调整备注"), { target: { value: "明日复盘" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: /确认覆盖/ }));
+  fireEvent.click(screen.getByRole("button", { name: "保存广告数据" }));
+  await screen.findByText(/广告数据已保存/);
+  const saved = await opsDb.list("ads");
+  expect(saved).toHaveLength(1);
+  expect(saved[0]).toMatchObject({ ...old, adjusted: true, adjustmentRecord: { date: "2026-10-08", content: "预算由5美元改为8美元，竞价改为固定", note: "明日复盘" } });
+  cleanup();
+  render(<ManualAdForm {...props} records={saved} initialRecord={saved[0]} />);
+  expect((screen.getByLabelText("调整内容") as HTMLTextAreaElement).value).toBe("预算由5美元改为8美元，竞价改为固定");
+  expect((screen.getByLabelText("调整备注") as HTMLInputElement).value).toBe("明日复盘");
 });
 
 test("updates an imported campaign only after confirmation and does not count it twice", async () => {
@@ -69,7 +88,8 @@ test("edits and displays saved campaign metadata with all requested columns", as
   form([row]);
   fireEvent.click(screen.getByRole("button", { name: /编辑广告/ }));
   expect((screen.getByLabelText("搜索首页首位展示份额（%）") as HTMLInputElement).value).toBe("12.5");
-  expect((screen.getByLabelText("是否调整") as HTMLSelectElement).value).toBe("yes");
+  expect((screen.getByLabelText("调整内容") as HTMLTextAreaElement).value).toBe("");
+  expect(screen.getByRole("table", { name: "当日广告活动数据" }).textContent).toContain("已调整（旧记录无内容）");
   const table = screen.getByRole("table", { name: "当日广告活动数据" });
   expect(table.textContent).toContain("ACOS");
   expect(table.textContent).toContain("ROAS");

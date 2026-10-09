@@ -28,6 +28,31 @@ afterEach(async () => {
 });
 
 describe("ImportPanel", () => {
+  test("product import does not offer an unrelated fallback advertising date", () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    render(<ImportPanel plan={plan} initialReportKind="productPerformance" />);
+    expect(screen.queryByLabelText("广告报表日期")).toBeNull();
+  });
+  test("saves Lingxing parent product data separately and previews duplicate updates", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    const csv = "时间,ASIN,销量,净销售额,结算毛利润,广告花费,广告销售额,广告订单量,点击,展示\n2026-10-01,B0HC59CW1H,0,0,-3.16,2.42,65.99,1,2,382";
+    await preview("产品表现日详情父ASIN.csv", csv);
+    await screen.findByText("有效行: 1");
+    fireEvent.click(screen.getByRole("button", { name: "保存导入" }));
+    await screen.findByText("导入已保存");
+    expect(await opsDb.list("productPerformance")).toMatchObject([{ scope: "parent", date: "2026-10-01", spend: 2.42 }]);
+    expect(await opsDb.list("ads")).toEqual([]);
+    expect(await opsDb.list("business")).toEqual([]);
+    expect(await opsDb.list("rawRows")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("选择报告文件"), { target: { files: [file("产品表现日详情父ASIN.csv", csv.replace("2.42", "3.42"))] } });
+    await screen.findByText("重复记录: 1");
+    expect((screen.getByRole("button", { name: "保存导入" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText("替换旧记录"));
+    fireEvent.click(screen.getByRole("button", { name: "保存导入" }));
+    await screen.findByText("导入已保存");
+    expect(await opsDb.list("productPerformance")).toMatchObject([{ spend: 3.42 }]);
+    expect(await opsDb.list("productPerformance")).toHaveLength(1);
+  });
   test("re-previews a native campaign export after the user supplies its single-day report date", async () => {
     configureOpsDbForTests(createMemoryIdbFactory());
     await preview("export.csv", "广告活动名称,广告活动开始日期,展示量,点击量,总成本,销售额,购买量,ACOS,ROAS,转化率,搜索结果首页首位展示量份额,是否调整\nSanta,2024-11-21,1000,10,US$12,US$60,2,20%,5,20%,12.5%,是");

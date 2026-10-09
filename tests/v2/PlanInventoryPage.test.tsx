@@ -6,6 +6,7 @@ import { adaptLegacyWeeklyPlanRows } from "../../src/integration/legacy-plan-ada
 import type { PlanModel } from "../../src/data/plan";
 import { configureOpsDbForTests, opsDb, resetOpsDbForTests } from "../../src/storage/db";
 import { createMemoryIdbFactory } from "../storage/memory-idb";
+import { loadPlan } from "../../src/data/plan";
 
 const plan = {
   seasonEndDate: "2026-12-20",
@@ -47,6 +48,27 @@ describe("legacy weekly plan adapter", () => {
 });
 
 describe("PlanInventoryPage", () => {
+  test("manual sales refresh the same-page comparison without discarding unsaved plan edits", async () => {
+    configureOpsDbForTests(createMemoryIdbFactory());
+    const source = loadPlan();
+    await opsDb.saveActivePlan({ id:"plan-2026", totalUnits:3000, updatedAt:"2026-10-07T00:00:00Z", rows:[{date:"2026-10-07",size:"L",units:1000},{date:"2026-10-07",size:"XL",units:1000},{date:"2026-10-07",size:"2XL",units:500},{date:"2026-10-07",size:"3XL",units:500}] }, {id:"seed",changedAt:"2026-10-07T00:00:00Z",reason:"seed",beforeTotal:0,afterTotal:3000});
+    render(<PlanInventoryPage plan={source} onBack={()=>undefined}/>);
+    await screen.findByRole("table",{name:"每日尺码计划与实际对比"});
+    fireEvent.change(screen.getByLabelText("2026-10-07 XL 计划销量"),{target:{value:"1001"}});
+    fireEvent.click(screen.getByRole("button",{name:"手动录入实际销量"}));
+    fireEvent.change(screen.getByLabelText("销售日期"),{target:{value:"2026-10-07"}});
+    fireEvent.change(screen.getByLabelText("销售ASIN"),{target:{value:"B0CFPR34MH"}});
+    fireEvent.change(screen.getByLabelText("销量（件）"),{target:{value:"7"}});
+    fireEvent.change(screen.getByLabelText("销售额（USD）"),{target:{value:"350"}});
+    fireEvent.change(screen.getByLabelText("售价（USD / 件）"),{target:{value:"50"}});
+    fireEvent.click(screen.getByRole("button",{name:"保存销量"}));
+    await waitFor(()=>expect(screen.getByLabelText("2026-10-07 XL 实际销量").textContent).toBe("7"));
+    expect((screen.getByLabelText("2026-10-07 XL 计划销量") as HTMLInputElement).value).toBe("1001");
+    expect((await opsDb.getActivePlan())?.rows.find(row=>row.size==="XL")?.units).toBe(1000);
+    expect(await opsDb.list("business")).toMatchObject([{size:"XL",units:7,sales:350}]);
+    fireEvent.change(screen.getByLabelText("2026-10-07 XL 计划销量"),{target:{value:""}});
+    expect(screen.getByLabelText("计划概览").textContent).not.toContain("NaN");
+  });
   test("initializes a plan from the legacy weekly source and exposes all four size risks without disguising missing inventory", async () => {
     configureOpsDbForTests(createMemoryIdbFactory());
     render(<PlanInventoryPage plan={plan} onBack={() => undefined} />);

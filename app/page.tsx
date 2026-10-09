@@ -23,6 +23,7 @@ import { OpsNavigation, type OpsPage } from "../src/components/OpsNavigation";
 import { statusForTarget } from "../src/calc/status";
 import { loadPlan } from "../src/data/plan";
 import type { AdRecord, BusinessRecord, ManualRecord, SizeCode } from "../src/domain/types";
+import type { ProductPerformanceRecord } from "../src/domain/product-performance";
 import type { ActivePlan, DailyOperationDraft, DailyOperationRecord, InboundEntry, InventorySnapshot, PromotionPlanOverride } from "../src/domain/planning";
 import { buildDashboardSeries, evaluateDashboardRisks, selectDashboardSnapshot, targetsForSize } from "../src/integration/dashboard";
 import { buildPlanInventorySummary } from "../src/integration/plan-inventory";
@@ -81,7 +82,7 @@ function summarizeInboundByAsin(entries: readonly InboundEntry[]): AsinInboundSu
 }
 
 function loadOpsData() {
-  return Promise.all([opsDb.list("business"), opsDb.list("ads"), opsDb.list("manual"), opsDb.list("imports"), opsDb.getActivePlan(), opsDb.listInventorySnapshots(), opsDb.getInboundEntries(), opsDb.listPromotionPlanOverrides(), opsDb.listDailyOperations()]);
+  return Promise.all([opsDb.list("business"), opsDb.list("ads"), opsDb.list("manual"), opsDb.list("imports"), opsDb.getActivePlan(), opsDb.listInventorySnapshots(), opsDb.getInboundEntries(), opsDb.listPromotionPlanOverrides(), opsDb.listDailyOperations(), opsDb.list("productPerformance")]);
 }
 
 function manualKey(record: ManualRecord): string {
@@ -99,6 +100,8 @@ function DashboardContent() {
   const [mode, setMode] = useState<DashboardMode>("daily");
   const [business, setBusiness] = useState<BusinessRecord[]>([]);
   const [ads, setAds] = useState<AdRecord[]>([]);
+  const [productPerformance, setProductPerformance] = useState<ProductPerformanceRecord[]>([]);
+  const [adImportKind, setAdImportKind] = useState<"ads" | "productPerformance">("ads");
   const [manual, setManual] = useState<(ManualRecord & { key: string })[]>([]);
   const [imports, setImports] = useState<ImportLog[]>([]);
   const [activePlan, setActivePlan] = useState<ActivePlan | null>(null);
@@ -122,7 +125,8 @@ function DashboardContent() {
   const refresh = useCallback(async () => {
     setLoaded(false);
     try {
-      const [nextBusiness, nextAds, nextManual, nextImports, nextActivePlan, nextInventory, nextInbound, nextPromotionOverrides, nextDailyOperations] = await loadOpsData();
+      const [nextBusiness, nextAds, nextManual, nextImports, nextActivePlan, nextInventory, nextInbound, nextPromotionOverrides, nextDailyOperations, nextProductPerformance] = await loadOpsData();
+      setProductPerformance(nextProductPerformance);
       setBusiness(nextBusiness);
       setAds(nextAds);
       setManual(nextManual);
@@ -141,7 +145,8 @@ function DashboardContent() {
   }, []);
 
   useEffect(() => {
-    void loadOpsData().then(([nextBusiness, nextAds, nextManual, nextImports, nextActivePlan, nextInventory, nextInbound, nextPromotionOverrides, nextDailyOperations]) => {
+    void loadOpsData().then(([nextBusiness, nextAds, nextManual, nextImports, nextActivePlan, nextInventory, nextInbound, nextPromotionOverrides, nextDailyOperations, nextProductPerformance]) => {
+      setProductPerformance(nextProductPerformance);
       setBusiness(nextBusiness);
       setAds(nextAds);
       setManual(nextManual);
@@ -270,10 +275,10 @@ function DashboardContent() {
     return <PromotionReviewPage ads={ads} business={business} overrides={promotionOverrides} operations={dailyOperations} startDate="2026-10-02" endDate="2026-12-20" onBack={() => { setPage("promotion"); void refresh(); }} />;
   }
   if (page === "advertising-dashboard") {
-    return <AdvertisingDashboard records={ads} mappings={plan.primaryMappings} loaded={loaded} error={dataLoadError} targetAcos={Number(plan.targetThresholds.targetAcosRate)}
-      onBack={() => { closeAdEntry(); setPage("dashboard"); }} onRefresh={refresh} onOpenManual={toggleAdEntry} onOpenImport={() => setShowImport((shown) => !shown)} onEditRecord={(record) => { setEditingAdRecord(record); setShowManualAds(true); }}>
+    return <AdvertisingDashboard records={ads} productRecords={productPerformance} mappings={plan.primaryMappings} loaded={loaded} error={dataLoadError} targetAcos={Number(plan.targetThresholds.targetAcosRate)}
+      onBack={() => { closeAdEntry(); setPage("dashboard"); }} onRefresh={refresh} onOpenManual={toggleAdEntry} onOpenImport={() => { setAdImportKind("ads"); setShowImport((shown) => adImportKind !== "ads" || !shown); }} onOpenProductImport={() => { setAdImportKind("productPerformance"); setShowImport((shown) => adImportKind !== "productPerformance" || !shown); }} onEditRecord={(record) => { setEditingAdRecord(record); setShowManualAds(true); }}>
       {showManualAds ? <ManualAdForm key={editingAdRecord?.key ?? "new-ad"} mappings={plan.primaryMappings} records={ads} loaded={loaded && !dataLoadError} initialRecord={editingAdRecord} onCancel={closeAdEntry} onSaved={refresh} /> : null}
-      {showImport ? <div className="operations-panel"><ImportPanel plan={plan} initialReportKind="ads" onImported={refresh} /></div> : null}
+      {showImport ? <div className="operations-panel"><ImportPanel key={adImportKind} plan={plan} initialReportKind={adImportKind} onImported={refresh} /></div> : null}
     </AdvertisingDashboard>;
   }
   if (page === "daily-operations") {

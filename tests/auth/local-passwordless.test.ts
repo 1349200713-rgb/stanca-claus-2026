@@ -111,22 +111,38 @@ describe("local-only passwordless access", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
-  test("does not grant operation permission with the automatic access session", async () => {
+  test("allows local saves without an operation password while retaining an access session", async () => {
     const cookie = await localCookie();
     const write = await dataRoute.POST(new Request(`${origin}/api/data`, {
-      method: "POST", headers: { cookie, origin, "content-type": "application/json" },
-      body: JSON.stringify({ store: "dailyOps", records: [{ key: "blocked-local-write", date: "2026-10-06" }], mode: "insert" }),
+      method: "POST", headers: { cookie, origin, host: "127.0.0.1:3011", "content-type": "application/json" },
+      body: JSON.stringify({ store: "dailyOps", records: [{ key: "passwordless-local-write", date: "2026-10-06" }], mode: "insert" }),
     }));
-    expect(write.status).toBe(428);
+    expect(write.status).toBe(200);
     const opsWrite = await opsRoute.POST(new Request(`${origin}/api/ops/competitors`, {
-      method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ records: [] }),
+      method: "POST", headers: { cookie, origin, host: "127.0.0.1:3011", "content-type": "application/json" }, body: JSON.stringify({ records: [{ key: "local-passwordless-competitor", date: "2026-10-07" }], importBatch: { id: "local-passwordless-batch", filename: "manual", importedAt: "2026-10-07T00:00:00Z" } }),
     }), { params: Promise.resolve({ resource: "competitors" }) });
-    expect(opsWrite.status).toBe(428);
+    expect(opsWrite.status).toBe(201);
+    const opsRead = await opsRoute.GET(new Request(`${origin}/api/ops/competitors`, { headers: { cookie } }), { params: Promise.resolve({ resource: "competitors" }) });
+    expect((await opsRead.json()).records).toContainEqual({ key: "local-passwordless-competitor", date: "2026-10-07" });
     const wrongPassword = await operationRoute.POST(new Request(`${origin}/api/auth/operation`, {
       method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ password: "wrong" }),
     }));
     expect(wrongPassword.status).toBe(401);
-    expect(server.listRecords("dailyOps")).toEqual([]);
+    expect(server.listRecords("dailyOps")).toContainEqual({ key: "passwordless-local-write", date: "2026-10-06" });
+  });
+
+  test.each([
+    ["public", "https://shared.test", { host: "shared.test" }],
+    ["missing host", origin, {}],
+    ["proxy", origin, { host: "127.0.0.1:3011", "x-forwarded-for": "203.0.113.9" }],
+    ["cross-site", origin, { host: "127.0.0.1:3011", "sec-fetch-site": "cross-site" }],
+  ] as const)("retains operation verification for %s even with a local access cookie", async (_name, url, extra) => {
+    const cookie = await localCookie();
+    const headers = { cookie, "content-type": "application/json", ...extra };
+    const write = await dataRoute.POST(new Request(`${url}/api/data`, { method: "POST", headers, body: JSON.stringify({ store: "dailyOps", records: [] }) }));
+    expect(write.status).toBe(428);
+    const opsWrite = await opsRoute.POST(new Request(`${url}/api/ops/competitors`, { method: "POST", headers, body: JSON.stringify({ records: [] }) }), { params: Promise.resolve({ resource: "competitors" }) });
+    expect(opsWrite.status).toBe(428);
   });
 
   test("keeps saving available after the correct operation password is entered", async () => {
@@ -141,6 +157,6 @@ describe("local-only passwordless access", () => {
       body: JSON.stringify({ store: "dailyOps", records: [{ key: "allowed-local-write", date: "2026-10-06" }], mode: "insert" }),
     }));
     expect(write.status).toBe(200);
-    expect(server.listRecords("dailyOps")).toEqual([{ key: "allowed-local-write", date: "2026-10-06" }]);
+    expect(server.listRecords("dailyOps")).toContainEqual({ key: "allowed-local-write", date: "2026-10-06" });
   });
 });

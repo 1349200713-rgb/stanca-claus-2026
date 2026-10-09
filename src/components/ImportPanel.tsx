@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import type { AdRecord, BusinessRecord } from "../domain/types";
+import type { ProductPerformanceRecord } from "../domain/product-performance";
+import { isProductPerformanceReport, parseProductPerformanceReport, type ProductPerformanceParseResult } from "../import/product-performance-parser";
 import type { InboundEntry, InventorySnapshot } from "../domain/planning";
 import { findDuplicates } from "../import/dedupe";
 import { isInboundReport, parseInboundReport, type InboundParseResult } from "../import/inbound-parser";
@@ -9,15 +11,15 @@ import { inventoryKindFromFilename, isInventoryReport, parseInventoryReport, typ
 import { parseReport, reportKindFromFilename, type ParseResult, type SkuMap } from "../import/report-parser";
 import { opsDb, type ImportLog } from "../storage/db";
 
-type ReportKind = "business" | "ads" | "inventory" | "inbound";
-type FormalRecord = BusinessRecord | AdRecord | InventorySnapshot | InboundEntry;
-type KeyedFormalRecord = BusinessRecord | AdRecord | InventorySnapshot;
+type ReportKind = "business" | "ads" | "inventory" | "inbound" | "productPerformance";
+type FormalRecord = BusinessRecord | AdRecord | InventorySnapshot | InboundEntry | ProductPerformanceRecord;
+type KeyedFormalRecord = BusinessRecord | AdRecord | InventorySnapshot | ProductPerformanceRecord;
 
 interface Preview {
   filename: string;
   kind: ReportKind;
   bytes: ArrayBuffer;
-  result: ParseResult | InventoryParseResult | InboundParseResult;
+  result: ParseResult | InventoryParseResult | InboundParseResult | ProductPerformanceParseResult;
   unique: FormalRecord[];
   duplicates: FormalRecord[];
   comparisons: Array<{ key: string; existing: FormalRecord; incoming: FormalRecord }>;
@@ -58,9 +60,10 @@ export function ImportPanel({ plan, inventorySnapshotDate, onImported, initialRe
 
     try {
       const bytes = await file.arrayBuffer();
+      const productPerformance = selectedKind === "productPerformance" || (selectedKind === "auto" && isProductPerformanceReport(bytes));
       const inbound = selectedKind === "inbound" || (selectedKind === "auto" && isInboundReport(bytes));
-      const inventory = selectedKind === "inventory" || (selectedKind === "auto" && !inbound && isInventoryReport(bytes, file.name));
-      const result = inbound
+      const inventory = selectedKind === "inventory" || (selectedKind === "auto" && !productPerformance && !inbound && isInventoryReport(bytes, file.name));
+      const result = productPerformance ? parseProductPerformanceReport(bytes, file.name) : inbound
         ? parseInboundReport(bytes, file.name, { defaultYear: 2026, updatedAt: new Date().toISOString() })
         : inventory
         ? parseInventoryReport(bytes, file.name, plan, {
@@ -75,7 +78,7 @@ export function ImportPanel({ plan, inventorySnapshotDate, onImported, initialRe
         setPreview({ filename: file.name, kind, bytes, result, unique: incoming, duplicates: [], comparisons: [] });
         return;
       }
-      const existing = kind === "business"
+      const existing = kind === "productPerformance" ? await opsDb.list("productPerformance") : kind === "business"
         ? await opsDb.list("business")
         : kind === "ads"
           ? await opsDb.list("ads")
@@ -132,7 +135,8 @@ export function ImportPanel({ plan, inventorySnapshotDate, onImported, initialRe
         ? (selectedRecords as InventorySnapshot[]).map((record) => ({ ...record, sourceImportKey: log.key }))
         : selectedRecords;
       const evidence = { bytes: preview.bytes, rawRows: preview.result.rawRows };
-      if (preview.kind === "business") await opsDb.commitImport("business", records as BusinessRecord[], log, evidence);
+      if (preview.kind === "productPerformance") await opsDb.commitImport("productPerformance", records as ProductPerformanceRecord[], log, evidence);
+      else if (preview.kind === "business") await opsDb.commitImport("business", records as BusinessRecord[], log, evidence);
       else if (preview.kind === "ads") await opsDb.commitImport("ads", records as AdRecord[], log, evidence);
       else await opsDb.commitImport("inventory", records as InventorySnapshot[], log, evidence);
       setMessage("导入已保存");
@@ -146,15 +150,17 @@ export function ImportPanel({ plan, inventorySnapshotDate, onImported, initialRe
 
   const saveDisabled = !preview || preview.result.fatal || saving || (preview.duplicates.length > 0 && !duplicateAction);
   const issueRowCount = preview ? new Set(preview.result.issues.map((issue) => issue.row).filter((row): row is number => row !== undefined)).size : 0;
+  const showAdDate = reportKind === "ads" || reportKind === "auto";
 
   return (
     <section aria-labelledby="import-panel-heading">
       <h2 id="import-panel-heading">导入报告</h2>
       <div className="report-import-options">
-        <label>报告类型<select aria-label="报告类型" value={reportKind} onChange={(event) => { const next = event.currentTarget.value as ReportKind | "auto"; setReportKind(next); void handleFile(selectedFile, next, adReportDate); }}><option value="auto">自动识别</option><option value="business">业务（销量 / 销售额）</option><option value="ads">广告报告</option><option value="inventory">库存报告</option><option value="inbound">在途报告</option></select></label>
-        <label>广告报表日期（文件无日期时填写）<input aria-label="广告报表日期" type="date" value={adReportDate} onChange={(event) => { const next = event.currentTarget.value; setAdReportDate(next); void handleFile(selectedFile, reportKind, next); }} /></label>
+        <label>报告类型<select aria-label="报告类型" value={reportKind} onChange={(event) => { const next = event.currentTarget.value as ReportKind | "auto"; setReportKind(next); void handleFile(selectedFile, next, adReportDate); }}><option value="auto">自动识别</option><option value="productPerformance">领星产品表现（每日同比）</option><option value="business">业务（销量 / 销售额）</option><option value="ads">广告报告</option><option value="inventory">库存报告</option><option value="inbound">在途报告</option></select></label>
+        {showAdDate ? <label>广告报表日期（文件无日期时填写）<input aria-label="广告报表日期" type="date" value={adReportDate} onChange={(event) => { const next = event.currentTarget.value; setAdReportDate(next); void handleFile(selectedFile, reportKind, next); }} /></label> : null}
       </div>
-      <p className="manual-sales-note">无日期的单日广告导出可补填报表日期；多日汇总请重新导出按日报表。广告活动开始日期不会作为报表日期。缺失的购买量或销售额须补齐后保存。</p>
+      {showAdDate ? <p className="manual-sales-note">无日期的单日广告导出可补填报表日期；多日汇总请重新导出按日报表。广告活动开始日期不会作为报表日期。缺失的购买量或销售额须补齐后保存。</p> : null}
+      {reportKind === "auto" || reportKind === "productPerformance" ? <p className="manual-sales-note">领星产品表现支持2025、2026按日文件，独立保存，不重复累加活动广告或尺码销量。按实际“时间”列识别日期，文件名范围不代表所有天都有数据；原始文件与原表字段保留，导入的AI文字不作为指令或自动建议。</p> : null}
       <label htmlFor="report-file">选择报告文件</label>
       <input
         id="report-file"
@@ -167,7 +173,8 @@ export function ImportPanel({ plan, inventorySnapshotDate, onImported, initialRe
       {preview && (
         <div aria-live="polite">
           <h3>导入预览</h3>
-          <p>报告类型: {preview.kind === "ads" ? "广告" : preview.kind === "inventory" ? "库存" : preview.kind === "inbound" ? "在途" : "业务"}</p>
+          <p>报告类型: {preview.kind === "productPerformance" ? "领星产品表现" : preview.kind === "ads" ? "广告" : preview.kind === "inventory" ? "库存" : preview.kind === "inbound" ? "在途" : "业务"}</p>
+          {preview.kind === "productPerformance" ? <p>实际日期：{[...new Set((preview.result.records as ProductPerformanceRecord[]).map((record) => record.date))].sort().join("、") || "无有效日期"} · ASIN：{[...new Set((preview.result.records as ProductPerformanceRecord[]).map((record) => record.asin))].join("、") || "无"}</p> : null}
           <p>有效行: {preview.result.records.length}</p>
           <p>问题行: {issueRowCount}</p>
           <p>重复记录: {preview.duplicates.length}</p>

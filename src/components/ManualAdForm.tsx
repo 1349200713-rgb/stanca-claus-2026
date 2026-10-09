@@ -22,7 +22,9 @@ interface AdDraft {
   clicks: string;
   impressions: string;
   topShare: string;
-  adjusted: string;
+  adjustmentDate: string;
+  adjustmentContent: string;
+  adjustmentNote: string;
 }
 
 function matches(row: AdRecord, draft: AdDraft): boolean {
@@ -32,15 +34,15 @@ function matches(row: AdRecord, draft: AdDraft): boolean {
 }
 
 function emptyDraft(date?: string): AdDraft {
-  return { date: date ?? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()), campaign: "", asin: "", sku: "", spend: "", adSales: "", adOrders: "", clicks: "", impressions: "", topShare: "", adjusted: "" };
+  return { date: date ?? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()), campaign: "", asin: "", sku: "", spend: "", adSales: "", adOrders: "", clicks: "", impressions: "", topShare: "", adjustmentDate: date ?? "", adjustmentContent: "", adjustmentNote: "" };
 }
 
 function recordDraft(row: AdRecord): AdDraft {
-  return { date: row.date, campaign: row.campaign, asin: row.asin ?? "", sku: row.sku ?? "", spend: String(row.spend), adSales: String(row.adSales), adOrders: String(row.adOrders), clicks: row.clicks === undefined ? "" : String(row.clicks), impressions: row.impressions === undefined ? "" : String(row.impressions), topShare: row.topOfSearchImpressionShare === undefined ? "" : String(Number((row.topOfSearchImpressionShare * 100).toFixed(6))), adjusted: row.adjusted === undefined ? "" : row.adjusted ? "yes" : "no" };
+  return { date: row.date, campaign: row.campaign, asin: row.asin ?? "", sku: row.sku ?? "", spend: String(row.spend), adSales: String(row.adSales), adOrders: String(row.adOrders), clicks: row.clicks === undefined ? "" : String(row.clicks), impressions: row.impressions === undefined ? "" : String(row.impressions), topShare: row.topOfSearchImpressionShare === undefined ? "" : String(Number((row.topOfSearchImpressionShare * 100).toFixed(6))), adjustmentDate: row.adjustmentRecord?.date ?? row.date, adjustmentContent: row.adjustmentRecord?.content ?? "", adjustmentNote: row.adjustmentRecord?.note ?? "" };
 }
 
 function revision(row: AdRecord): string {
-  return JSON.stringify([row.date, row.campaign, row.asin, row.sku, row.marketplace, row.spend, row.adSales, row.adOrders, row.clicks, row.impressions, row.topOfSearchImpressionShare, row.adjusted, row.cpc, row.ctr, row.cvr, row.acos, row.roas, row.source, row.updatedAt]);
+  return JSON.stringify([row.date, row.campaign, row.asin, row.sku, row.marketplace, row.spend, row.adSales, row.adOrders, row.clicks, row.impressions, row.topOfSearchImpressionShare, row.adjusted, row.adjustmentRecord, row.cpc, row.ctr, row.cvr, row.acos, row.roas, row.source, row.updatedAt]);
 }
 
 function importLogKey(updatedAt: string): string {
@@ -110,6 +112,11 @@ export function ManualAdForm({ mappings, records, loaded, onSaved, initialRecord
     if (adOrders === undefined || !Number.isSafeInteger(adOrders) || adOrders < 0 || [clicks, impressions].some((value) => value !== undefined && (!Number.isSafeInteger(value) || value < 0))) { setError("购买量、点击量和展示量必须是非负整数；未统计的点击量、展示量可留空。"); return; }
     if (clicks !== undefined && impressions !== undefined && clicks > impressions) { setError("点击量不能大于展示量，请检查填写的报表口径。"); return; }
     const topShare = optionalNumber(draft.topShare);
+    const adjustmentContent = draft.adjustmentContent.trim();
+    const adjustmentNote = draft.adjustmentNote.trim();
+    const adjustmentDate = new Date(`${draft.adjustmentDate}T00:00:00Z`);
+    if (adjustmentNote && !adjustmentContent) { setError("填写调整备注时，也请填写调整内容。"); return; }
+    if (adjustmentContent && (!/^\d{4}-\d{2}-\d{2}$/.test(draft.adjustmentDate) || !Number.isFinite(adjustmentDate.getTime()) || adjustmentDate.toISOString().slice(0, 10) !== draft.adjustmentDate)) { setError("请填写有效的调整日期。"); return; }
     if (topShare !== undefined && (!Number.isFinite(topShare) || topShare < 0 || topShare > 100)) { setError("搜索首页首位展示份额必须为 0 到 100 之间的百分比。"); return; }
     const mappedAsin = mappings.find((item) => normalize(item.asin) === normalize(draft.asin));
     const mappedSku = mappings.find((item) => normalize(item.sku) === normalize(draft.sku));
@@ -133,7 +140,9 @@ export function ManualAdForm({ mappings, records, loaded, onSaved, initialRecord
         date: draft.date, marketplace: "US", campaign, asin: asin || undefined, sku: sku || undefined,
         spend, adSales, adOrders, clicks, impressions, cpc, ctr, cvr, acos, roas,
         topOfSearchImpressionShare: topShare === undefined ? undefined : topShare / 100,
-        adjusted: draft.adjusted === "" ? undefined : draft.adjusted === "yes", source: "manual", updatedAt,
+        adjusted: adjustmentContent ? true : previous?.adjustmentRecord ? undefined : previous?.adjusted,
+        adjustmentRecord: adjustmentContent ? { date: draft.adjustmentDate, content: adjustmentContent, note: adjustmentNote || undefined } : undefined,
+        source: "manual", updatedAt,
       };
       await opsDb.commitImport("ads", [record], { key: importLogKey(updatedAt), filename: "手动广告录入", importedAt: updatedAt, reportKind: "ads", rowCount: 1, issueCount: 0, duplicateCount: previous ? 1 : 0, action: previous ? "replace" : "insert" });
       if (selectedRecord) setSelectedRecord(record);
@@ -160,14 +169,18 @@ export function ManualAdForm({ mappings, records, loaded, onSaved, initialRecord
       <label>购买量（广告订单）<input aria-label="广告订单（单）" type="number" min="0" step="1" value={draft.adOrders} onChange={(event) => update("adOrders", event.currentTarget.value)} required /></label>
       <label>销售额（USD）<input aria-label="广告销售额（USD）" type="number" min="0" step="0.01" value={draft.adSales} onChange={(event) => update("adSales", event.currentTarget.value)} required /></label>
       <label>搜索结果首页首位展示量份额（%）<input aria-label="搜索首页首位展示份额（%）" type="number" min="0" max="100" step="0.01" value={draft.topShare} onChange={(event) => update("topShare", event.currentTarget.value)} /></label>
-      <label>是否调整<select aria-label="是否调整" value={draft.adjusted} onChange={(event) => update("adjusted", event.currentTarget.value)}><option value="">未记录</option><option value="yes">是</option><option value="no">否</option></select></label>
+      <fieldset className="manual-ad-adjustment"><legend>调整记录（手动输入）</legend>
+        <label>调整日期<input aria-label="调整日期" type="date" value={draft.adjustmentDate} onChange={event => update("adjustmentDate", event.currentTarget.value)} /></label>
+        <label>调整内容<textarea aria-label="调整内容" rows={3} value={draft.adjustmentContent} onChange={event => update("adjustmentContent", event.currentTarget.value)} placeholder="例如预算由5美元改为8美元、竞价改为固定" /></label>
+        <label>调整备注（选填）<input aria-label="调整备注" value={draft.adjustmentNote} onChange={event => update("adjustmentNote", event.currentTarget.value)} /></label>
+      </fieldset>
       <div className="ad-calculated-metrics" aria-label="广告自动计算指标"><span>点击率 <strong>{percent(ctr)}</strong></span><span>CPC <strong>{money(cpc)}</strong></span><span>ACOS <strong>{percent(acos)}</strong></span><span>ROAS <strong>{roas === undefined ? "—" : roas.toFixed(2)}</strong></span><span>转化率 <strong>{percent(cvr)}</strong></span></div>
       {existing ? <label className="manual-checkbox manual-sales-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.currentTarget.checked)} />确认覆盖已有总成本 {money(existing.spend)} / 销售额 {money(existing.adSales)}</label> : null}
       <button type="submit">{saving ? "正在保存…" : "保存广告数据"}</button>
       {selectedRecord || onCancel ? <button type="button" className="secondary-button" onClick={() => { setSelectedRecord(undefined); setDraft(emptyDraft(initialDate)); setConfirmed(false); setPendingExisting(undefined); setError(""); setMessage(""); onCancel?.(); }}>{selectedRecord ? "取消修改" : "关闭录入"}</button> : null}
     </fieldset></form>
     {error ? <p role="alert" className="manual-sales-error">{error}</p> : null}{message ? <p role="status">{message}</p> : null}
-    <div className="table-scroll"><table aria-label="当日广告活动数据"><thead><tr><th className="record-edit-column">操作</th><th>时间</th><th>广告活动名称</th><th>ASIN / SKU</th><th>展示量</th><th>点击量</th><th>点击率</th><th>总成本</th><th>CPC</th><th>购买量</th><th>销售额</th><th>ACOS</th><th>ROAS</th><th>转化率</th><th>搜索结果首页首位展示量份额</th><th>是否调整</th></tr></thead><tbody>{dayRows.map((row) => <tr key={row.key}><td className="record-edit-column"><button type="button" className="table-action-button" disabled={!loaded || saving} aria-label={`编辑广告 ${row.campaign} ${row.date}`} onClick={() => edit(row)}>手动修改</button></td><td>{row.date}</td><th scope="row">{row.campaign}</th><td>{row.asin || "—"}<br />{row.sku || "—"}</td><td>{row.impressions ?? "—"}</td><td>{row.clicks ?? "—"}</td><td>{percent(row.ctr ?? ratio(row.clicks, row.impressions))}</td><td>{money(row.spend)}</td><td>{money(row.cpc ?? ratio(row.spend, row.clicks))}</td><td>{row.adOrders}</td><td>{money(row.adSales)}</td><td>{percent(row.acos ?? ratio(row.spend, row.adSales))}</td><td>{(row.roas ?? ratio(row.adSales, row.spend))?.toFixed(2) ?? "—"}</td><td>{percent(row.cvr ?? ratio(row.adOrders, row.clicks))}</td><td>{percent(row.topOfSearchImpressionShare)}</td><td>{row.adjusted === undefined ? "未记录" : row.adjusted ? "是" : "否"}</td></tr>)}</tbody></table></div>
+    <div className="table-scroll"><table aria-label="当日广告活动数据"><thead><tr><th className="record-edit-column">操作</th><th>时间</th><th>广告活动名称</th><th>ASIN / SKU</th><th>展示量</th><th>点击量</th><th>点击率</th><th>总成本</th><th>CPC</th><th>购买量</th><th>销售额</th><th>ACOS</th><th>ROAS</th><th>转化率</th><th>搜索结果首页首位展示量份额</th><th>调整记录</th></tr></thead><tbody>{dayRows.map((row) => <tr key={row.key}><td className="record-edit-column"><button type="button" className="table-action-button" disabled={!loaded || saving} aria-label={`编辑广告 ${row.campaign} ${row.date}`} onClick={() => edit(row)}>手动修改</button></td><td>{row.date}</td><th scope="row">{row.campaign}</th><td>{row.asin || "—"}<br />{row.sku || "—"}</td><td>{row.impressions ?? "—"}</td><td>{row.clicks ?? "—"}</td><td>{percent(row.ctr ?? ratio(row.clicks, row.impressions))}</td><td>{money(row.spend)}</td><td>{money(row.cpc ?? ratio(row.spend, row.clicks))}</td><td>{row.adOrders}</td><td>{money(row.adSales)}</td><td>{percent(row.acos ?? ratio(row.spend, row.adSales))}</td><td>{(row.roas ?? ratio(row.adSales, row.spend))?.toFixed(2) ?? "—"}</td><td>{percent(row.cvr ?? ratio(row.adOrders, row.clicks))}</td><td>{percent(row.topOfSearchImpressionShare)}</td><td>{row.adjustmentRecord ? `${row.adjustmentRecord.date}：${row.adjustmentRecord.content}${row.adjustmentRecord.note ? `（${row.adjustmentRecord.note}）` : ""}` : row.adjusted === undefined ? "未记录" : row.adjusted ? "已调整（旧记录无内容）" : "未调整"}<button type="button" className="table-action-button" disabled={!loaded || saving} aria-label={`调整记录 ${row.campaign} ${row.date}`} onClick={() => edit(row)}>调整记录</button></td></tr>)}</tbody></table></div>
     {!dayRows.length ? <p className="manual-sales-note">该日期暂无广告数据。</p> : null}
   </section>;
 }

@@ -2,10 +2,14 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import type { AdRecord } from "../domain/types";
+import type { ProductPerformanceRecord } from "../domain/product-performance";
+import { ProductComparison } from "./ProductComparison";
 import type { PrimaryMapping } from "../data/plan";
 import { advertisingDateRange, advertisingRatio, buildAdvertisingAnalytics, defaultAdvertisingThresholds, type AdvertisingMetrics, type AdvertisingThresholds, type AdvertisingAnalytics } from "../integration/advertising-analytics";
 
 export interface AdvertisingDashboardProps {
+  productRecords?: readonly ProductPerformanceRecord[];
+  onOpenProductImport?: () => void;
   records: readonly AdRecord[];
   mappings: readonly PrimaryMapping[];
   loaded: boolean;
@@ -60,7 +64,7 @@ function AdvertisingTrend({ title, trends, series, percentage = false }: {
   </section>;
 }
 
-export function AdvertisingDashboard({ records, mappings, loaded, error, targetAcos, onBack, onRefresh, onOpenManual, onOpenImport, onEditRecord, children }: AdvertisingDashboardProps) {
+export function AdvertisingDashboard({ records, productRecords = [], mappings, loaded, error, targetAcos, onBack, onRefresh, onOpenManual, onOpenImport, onOpenProductImport, onEditRecord, children }: AdvertisingDashboardProps) {
   const [preset, setPreset] = useState<Preset>("7");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -106,9 +110,11 @@ export function AdvertisingDashboard({ records, mappings, loaded, error, targetA
   return <main className="dashboard-shell promotion-shell ad-dashboard-shell">
     <header className="ad-dashboard-header">
       <div><p className="eyebrow">ADVERTISING ANALYTICS</p><h1>广告数据看板</h1><p className="ad-dashboard-range-label">按广告归因数据分析 · 金额单位 USD</p></div>
-      <div className="ad-dashboard-actions"><button type="button" onClick={onBack}>返回总览</button>{onRefresh ? <button type="button" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "正在刷新…" : "刷新广告数据"}</button> : null}{onOpenManual ? <button type="button" onClick={onOpenManual}>手动录入广告</button> : null}{onOpenImport ? <button type="button" onClick={onOpenImport}>导入广告报告</button> : null}</div>
+      <div className="ad-dashboard-actions"><button type="button" onClick={onBack}>返回总览</button>{onRefresh ? <button type="button" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "正在刷新…" : "刷新广告数据"}</button> : null}{onOpenManual ? <button type="button" onClick={onOpenManual}>手动录入广告</button> : null}{onOpenProductImport ? <button type="button" className="product-import-button" onClick={onOpenProductImport}>导入领星产品表现</button> : null}{onOpenImport ? <button type="button" onClick={onOpenImport}>导入广告报告</button> : null}</div>
     </header>
     {children}
+    {loaded && !dataError ? <ProductComparison records={productRecords} targetAcos={targetAcos} /> : null}
+    <details className="ad-campaign-details" open={!productRecords.length}><summary>广告活动分析、异常与调整记录（独立口径）</summary>
     {dataError ? <section className="panel ad-dashboard-notice" role="alert"><h2>广告数据读取失败</h2><p>{dataError}</p><p>未把读取失败当作零广告花费；请刷新重试。</p></section> : !loaded ? <p className="panel ad-dashboard-notice" role="status">正在加载广告数据…</p> : !records.length ? <p className="panel ad-dashboard-notice">暂无广告数据。请先手动录入或导入广告报告。</p> : <>
       <section className="panel ad-dashboard-filters" aria-labelledby="advertising-filter-heading">
         <div className="ad-dashboard-section-heading"><h2 id="advertising-filter-heading">分析范围</h2><span>{analytics.filteredRows.length} 条记录 · {analytics.trustedRows.length} 条可信</span></div>
@@ -151,16 +157,17 @@ export function AdvertisingDashboard({ records, mappings, loaded, error, targetA
       <section className="panel" aria-labelledby="advertising-record-heading">
         <div className="ad-dashboard-section-heading"><h2 id="advertising-record-heading">广告记录明细</h2><label className="ad-dashboard-record-controls"><input type="checkbox" aria-label="只看异常记录" checked={onlyAnomalies} onChange={(event) => setOnlyAnomalies(event.currentTarget.checked)} />只看异常记录</label></div>
         <p className="analytics-note">“只看异常”仅过滤下表，不改变上方指标、趋势或分析范围。点击左侧“手动修改”可修改原记录，保存后更新指标和异常。</p>
-        <div className="table-scroll"><table aria-label="广告记录明细"><thead><tr><th className="record-edit-column">操作</th><th>日期</th><th>广告活动名称</th><th>ASIN / SKU / 尺码</th><th>展示量</th><th>点击量</th><th>点击率</th><th>总成本</th><th>CPC</th><th>购买量（广告订单）</th><th>销售额</th><th>ACOS</th><th>ROAS</th><th>广告转化率</th><th>搜索首页首位展示份额</th><th>是否调整</th><th>数据状态</th></tr></thead><tbody>{detailRows.map((item) => {
+        <div className="table-scroll"><table aria-label="广告记录明细"><thead><tr><th className="record-edit-column">操作</th><th>日期</th><th>广告活动名称</th><th>ASIN / SKU / 尺码</th><th>展示量</th><th>点击量</th><th>点击率</th><th>总成本</th><th>CPC</th><th>购买量（广告订单）</th><th>销售额</th><th>ACOS</th><th>ROAS</th><th>广告转化率</th><th>搜索首页首位展示份额</th><th>调整记录</th><th>数据状态</th></tr></thead><tbody>{detailRows.map((item) => {
           const record = item.record;
           return <tr key={item.id}>
             <td className="record-edit-column"><button type="button" className="table-action-button" disabled={!loaded || Boolean(dataError) || !onEditRecord} aria-label={`手动修改广告 ${record.campaign} ${record.date}`} onClick={() => onEditRecord?.(record)}>手动修改</button></td>
-            <td>{record.date}</td><th scope="row">{record.campaign}</th><td>{item.mapping.asin || "—"}<br />{item.mapping.sku || "—"}<br />{item.mapping.size ?? (item.mapping.status === "summary" ? "活动汇总" : item.mapping.status === "conflict" ? "映射冲突" : "未映射")}</td><td>{integer(record.impressions)}</td><td>{integer(record.clicks)}</td><td>{percent(advertisingRatio(record.clicks, record.impressions))}</td><td>{money(record.spend)}</td><td>{money(advertisingRatio(record.spend, record.clicks))}</td><td>{integer(record.adOrders)}</td><td>{money(record.adSales)}</td><td>{percent(advertisingRatio(record.spend, record.adSales))}</td><td>{advertisingRatio(record.adSales, record.spend)?.toFixed(2) ?? "未知"}</td><td>{percent(advertisingRatio(record.adOrders, record.clicks))}</td><td>{percent(record.topOfSearchImpressionShare)}</td><td>{record.adjusted === undefined ? "未记录" : record.adjusted ? "是" : "否"}</td>
+            <td>{record.date}</td><th scope="row">{record.campaign}</th><td>{item.mapping.asin || "—"}<br />{item.mapping.sku || "—"}<br />{item.mapping.size ?? (item.mapping.status === "summary" ? "活动汇总" : item.mapping.status === "conflict" ? "映射冲突" : "未映射")}</td><td>{integer(record.impressions)}</td><td>{integer(record.clicks)}</td><td>{percent(advertisingRatio(record.clicks, record.impressions))}</td><td>{money(record.spend)}</td><td>{money(advertisingRatio(record.spend, record.clicks))}</td><td>{integer(record.adOrders)}</td><td>{money(record.adSales)}</td><td>{percent(advertisingRatio(record.spend, record.adSales))}</td><td>{advertisingRatio(record.adSales, record.spend)?.toFixed(2) ?? "未知"}</td><td>{percent(advertisingRatio(record.adOrders, record.clicks))}</td><td>{percent(record.topOfSearchImpressionShare)}</td><td>{record.adjustmentRecord ? `${record.adjustmentRecord.date}：${record.adjustmentRecord.content}${record.adjustmentRecord.note ? `（${record.adjustmentRecord.note}）` : ""}` : record.adjusted === undefined ? "未记录" : record.adjusted ? "已调整（旧记录无内容）" : "未调整"}{onEditRecord ? <button type="button" className="table-action-button" disabled={!loaded} onClick={() => onEditRecord(record)} aria-label={`调整记录 ${record.campaign} ${record.date}`}>调整记录</button> : null}</td>
             <td className="ad-dashboard-row-status">{item.excluded ? "已排除 · 数据待核" : anomalyIds.has(item.id) ? "表现异常" : item.qualityReasons.length ? "含数据 / 样本提示" : "未触发异常"}<details><summary>核查说明</summary>{item.qualityReasons.length ? <ul>{item.qualityReasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul> : <p>显式商品：{normalize(record.asin) || normalize(record.sku) || "无（活动汇总）"}；未发现数据质量问题。</p>}</details></td>
           </tr>;
         })}</tbody></table></div>{onlyAnomalies && !detailRows.length ? <p>没有符合当前筛选的异常记录。</p> : null}
       </section>
     </>}
+    </details>
   </main>;
 }
 export default AdvertisingDashboard;

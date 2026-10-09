@@ -13,7 +13,7 @@ test("enters the local dashboard without a password form and makes the access mo
   await screen.findByRole("heading", { name: "测试驾驶舱" });
   expect(screen.queryByLabelText("访问密码")).toBeNull();
   expect(screen.queryByRole("button", { name: "退出登录" })).toBeNull();
-  expect(screen.getByText("本地免登录 · 保存仍需操作密码")).toBeTruthy();
+  expect(screen.getByText("本地免密码 · 可直接保存")).toBeTruthy();
   expect(screen.getByRole("button", { name: "刷新数据" })).toBeTruthy();
 });
 
@@ -33,7 +33,7 @@ test("keeps logout available for ordinary authenticated sessions", async () => {
   expect(screen.queryByText("本地免登录 · 保存仍需操作密码")).toBeNull();
 });
 
-test("mounts the page password dialog in local passwordless mode without granting automatic write permission", async () => {
+test("keeps the password dialog available if a protected operation explicitly requests authorization", async () => {
   vi.stubGlobal("fetch", async () => Response.json({ authenticated: true, localPasswordless: true }));
   render(<AuthGate><h1>测试驾驶舱</h1></AuthGate>);
   await screen.findByRole("heading", { name: "测试驾驶舱" });
@@ -47,5 +47,5 @@ test("mounts the page password dialog in local passwordless mode without grantin
   await act(async () => { await authorization; });
   expect(suppliedPassword).toBe("user-entered-password");
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.getByText("本地免登录 · 保存仍需操作密码")).toBeTruthy();
+  expect(screen.getByText("本地免密码 · 可直接保存")).toBeTruthy();
 });

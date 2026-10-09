@@ -1,16 +1,17 @@
 import type { AdRecord, BusinessRecord, ManualRecord, SizeCode } from "../domain/types";
+import type { ProductPerformanceRecord } from "../domain/product-performance";
 import type { ActivePlan, DailyOperationRecord, InboundEntry, InventorySnapshot, PlanChange, PromotionPlanOverride } from "../domain/planning";
 
 import { decodeData, encodeData, storeNames, type OpsStore, type WriteOperation, type WriteResult } from "./protocol";
 import { requestOperationAuthorization } from "./operation-authorization";
 export type { OpsStore } from "./protocol";
-type FormalStore = "business" | "ads" | "inventory";
+type FormalStore = "business" | "ads" | "inventory" | "productPerformance";
 
 export interface ImportLog {
   key: string;
   filename: string;
   importedAt: string;
-  reportKind: "business" | "ads" | "inventory" | "inbound" | "promotionPlan";
+  reportKind: "business" | "ads" | "inventory" | "inbound" | "promotionPlan" | "productPerformance";
   rowCount: number;
   issueCount: number;
   duplicateCount: number;
@@ -45,9 +46,9 @@ export interface RawImportRow {
 export interface DerivedResultRecord {
   key: string;
   importKey: string;
-  reportKind: "business" | "ads" | "inventory";
+  reportKind: FormalStore;
   sourceRecordKey: string;
-  record: BusinessRecord | AdRecord | InventorySnapshot;
+  record: BusinessRecord | AdRecord | InventorySnapshot | ProductPerformanceRecord;
 }
 
 export type StoredManualRecord = ManualRecord & { key: string };
@@ -99,6 +100,7 @@ function receivedInventorySnapshot(rows: readonly InventorySnapshot[], entry: In
 }
 
 interface StoreRecordMap {
+  productPerformance: ProductPerformanceRecord;
   business: BusinessRecord;
   ads: AdRecord;
   manual: StoredManualRecord;
@@ -116,7 +118,7 @@ interface StoreRecordMap {
 }
 
 const databaseName = "santa-ops";
-const databaseVersion = 5;
+const databaseVersion = 6;
 const activePlanKey = "active-plan";
 
 let database: IDBDatabase | undefined;

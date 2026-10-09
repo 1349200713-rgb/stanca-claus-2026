@@ -1,4 +1,4 @@
-export const storeNames = ["business", "ads", "manual", "imports", "mappings", "rawImports", "rawRows", "derivedResults", "activePlan", "planChanges", "inventory", "inbound", "promotionPlan", "dailyOps"] as const;
+export const storeNames = ["business", "ads", "manual", "imports", "mappings", "rawImports", "rawRows", "derivedResults", "activePlan", "planChanges", "inventory", "inbound", "promotionPlan", "dailyOps", "productPerformance"] as const;
 export type OpsStore = typeof storeNames[number];
 export type WriteMode = "insert" | "replace" | "merge";
 export interface WriteOperation {

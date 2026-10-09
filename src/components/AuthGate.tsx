@@ -72,7 +72,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setState("login");
   }
 
-  if (state === "ready") return <><div className="auth-toolbar"><button onClick={migrate} disabled={busy}>上传本机数据</button><button onClick={() => window.location.reload()}>刷新数据</button>{localPasswordless ? <span>本地免登录 · 保存仍需操作密码</span> : <button onClick={logout}>退出登录</button>}{migrationMessage ? <span role="status">{migrationMessage}</span> : null}</div>{children}<OperationPasswordDialog /></>;
+  if (state === "ready") return <><div className="auth-toolbar"><button onClick={migrate} disabled={busy}>上传本机数据</button><button onClick={() => window.location.reload()}>刷新数据</button>{localPasswordless ? <span>本地免密码 · 可直接保存</span> : <button onClick={logout}>退出登录</button>}{migrationMessage ? <span role="status">{migrationMessage}</span> : null}</div>{children}<OperationPasswordDialog /></>;
   return (
     <main className="auth-shell">
       <form className="auth-panel" onSubmit={submit}>
